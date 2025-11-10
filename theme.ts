@@ -19,6 +19,8 @@ export const COLORS = {
     border: '#E0E3E6',
     surface: '#FFFFFF',
     danger: '#C62828',
+    success: '#2E7D32',
+    warning: '#ED8F00',
   },
   dark: {
     background: '#191C25',
@@ -33,6 +35,8 @@ export const COLORS = {
     border: '#2A2D36',
     surface: '#23242A',
     danger: '#EF5350',
+    success: '#4CAF50',
+    warning: '#ED8F00',
   },
 };
 

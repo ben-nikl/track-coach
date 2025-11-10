@@ -6,6 +6,7 @@ import BottomMenu from './components/BottomMenu';
 import StatsScreen from './components/StatsScreen';
 import TrackListScreen from './components/TrackListScreen';
 import SettingsScreen from './components/SettingsScreen';
+import LapTimerScreen from './components/LapTimerScreen';
 import { ThemeProvider, useTheme } from './ThemeProvider';
 
 const AppContent: React.FC = () => {
@@ -13,6 +14,7 @@ const AppContent: React.FC = () => {
   const { colors, mode } = useTheme();
   const items = [
     { id: 'home', label: 'Home' },
+    { id: 'lap', label: 'Lap' },
     { id: 'sessions', label: 'Sessions' },
     { id: 'tracks', label: 'Tracks' },
     { id: 'stats', label: 'Stats' },
@@ -27,6 +29,8 @@ const AppContent: React.FC = () => {
           <TrackListScreen />
         ) : selected === 'settings' ? (
           <SettingsScreen />
+        ) : selected === 'lap' ? (
+          <LapTimerScreen trackName="Silverstone GP" />
         ) : (
           <View style={styles.center}>
             <Text style={[styles.title, { color: colors.text }]}>{selected.toUpperCase()}</Text>
