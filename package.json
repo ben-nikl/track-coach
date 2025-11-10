@@ -4,18 +4,41 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "env:check": "node scripts/check-env.mjs",
+    "android": "ANDROID_HOME=$HOME/Library/Android/sdk PATH=\"$PATH:$HOME/Library/Android/sdk/platform-tools\" npm run env:check && ANDROID_HOME=$HOME/Library/Android/sdk PATH=\"$PATH:$HOME/Library/Android/sdk/platform-tools\" expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
   "dependencies": {
+    "@react-navigation/native": "^7.1.19",
+    "@react-navigation/native-stack": "^7.6.2",
     "expo": "~54.0.22",
+    "expo-keep-awake": "~15.0.7",
+    "expo-location": "~19.0.7",
+    "expo-sensors": "~15.0.7",
+    "expo-sqlite": "~16.0.9",
     "expo-status-bar": "~3.0.8",
+    "expo-task-manager": "~14.0.8",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-maps": "1.20.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "@react-native-async-storage/async-storage": "^1.23.1"
   },
   "devDependencies": {
+    "@react-native/eslint-config": "^0.82.1",
     "@types/react": "~19.1.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-native": "^5.0.0",
+    "prettier": "^3.6.2",
     "typescript": "~5.9.2"
   },
   "private": true
