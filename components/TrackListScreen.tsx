@@ -2,22 +2,21 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity } from 'react-native';
 import TrackListItem from './TrackListScreen/TrackListItem';
 import { useTheme } from '../ThemeProvider';
-
-const TRACKS = [
-  { id: 'most', name: 'Autodrom Most', location: 'Most, Czech Republic', flag: require('../assets/flags/cz.png') },
-  { id: 'brno', name: 'Brno Circuit', location: 'Brno, Czech Republic', flag: require('../assets/flags/cz.png') },
-  { id: 'slovakia', name: 'Slovakia Ring', location: 'Orechová Potôň, Slovakia', flag: require('../assets/flags/sk.png') },
-  { id: 'mugello', name: 'Mugello Circuit', location: 'Scarperia e San Piero, Italy', flag: require('../assets/flags/it.png') },
-  { id: 'barcelona', name: 'Circuit de Barcelona-Catalunya', location: 'Montmeló, Spain', flag: require('../assets/flags/es.png') },
-];
+import TrackDetailScreen from './TrackDetailScreen';
+import { TRACKS, Track } from '../data/tracks';
 
 const TrackListScreen = () => {
   const [search, setSearch] = useState('');
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const { colors } = useTheme();
   const filteredTracks = TRACKS.filter(track =>
     track.name.toLowerCase().includes(search.toLowerCase()) ||
     track.location.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (selectedTrack) {
+    return <TrackDetailScreen track={selectedTrack} onBack={() => setSelectedTrack(null)} />;
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -32,8 +31,8 @@ const TrackListScreen = () => {
       <FlatList
         data={filteredTracks}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <TrackListItem item={item} />}
-        contentContainerStyle={{ paddingBottom: 80 }}
+        renderItem={({ item }) => <TrackListItem item={item} onPressTrack={setSelectedTrack} />}
+        contentContainerStyle={{ paddingBottom: 80, paddingHorizontal: 16 }}
       />
       <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary, shadowColor: colors.fabShadow }]}>
         <Text style={[styles.fabText, { color: colors.white }]}>+</Text>

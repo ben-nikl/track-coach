@@ -1,0 +1,91 @@
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import MapView, { Marker, MapViewProps, Polyline } from 'react-native-maps';
+import { useTheme } from '../ThemeProvider';
+import { Track } from '../data/tracks';
+import { computePerpendicularSegment } from '../helpers/generatePerpendicularSectors';
+
+export interface TrackDetail extends Track {}
+
+interface TrackDetailScreenProps {
+  track: TrackDetail;
+  onBack: () => void;
+}
+
+const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({ track, onBack }) => {
+  const { colors } = useTheme();
+  const region: MapViewProps['region'] = {
+    latitude: track.latitude,
+    longitude: track.longitude,
+    latitudeDelta: track.latitudeDelta,
+    longitudeDelta: track.longitudeDelta,
+  };
+
+  const lineWidthM = 12;
+  const startLine = computePerpendicularSegment(track.startLine.center, track.startLine.trackP1, track.startLine.trackP2, lineWidthM);
+  const finishLine = computePerpendicularSegment(track.finishLine.center, track.finishLine.trackP1, track.finishLine.trackP2, lineWidthM);
+
+  const sectorLines = track.sectors.map((sector) => {
+    const segment = computePerpendicularSegment(sector.center, sector.trackP1, sector.trackP2, lineWidthM);
+    return { id: sector.id, start: segment.start, end: segment.end };
+  });
+
+  const renderStartFinishLines = () => (
+    <>
+      <Marker coordinate={startLine.start} title="Start Line">
+        <Text style={styles.flagMarker}>🏁</Text>
+      </Marker>
+      <Marker coordinate={finishLine.end} title="Finish Line">
+        <Text style={styles.flagMarker}>🏁</Text>
+      </Marker>
+      <Polyline coordinates={[startLine.start, startLine.end]} strokeWidth={4} strokeColor={colors.success} />
+      <Polyline coordinates={[finishLine.start, finishLine.end]} strokeWidth={4} strokeColor={colors.warning} />
+    </>
+  );
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={onBack} style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={{ color: colors.text, fontSize: 16 }}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{track.name}</Text>
+      </View>
+      <Text style={[styles.subtitle, { color: colors.secondaryText }]}>{track.location}</Text>
+      <MapView style={styles.map} region={region} showsUserLocation={false}>
+        {renderStartFinishLines()}
+        {sectorLines.map(line => (
+          <Polyline
+            key={line.id}
+            coordinates={[line.start, line.end]}
+            strokeWidth={2}
+            strokeColor={colors.accent}
+          />
+        ))}
+      </MapView>
+      <View style={styles.meta}>
+        <Text style={[styles.metaLabel, { color: colors.secondaryText }]}>Track Center:</Text>
+        <Text style={[styles.metaValue, { color: colors.text }]}>{track.latitude.toFixed(5)}, {track.longitude.toFixed(5)}</Text>
+        <Text style={[styles.metaLabel, { color: colors.secondaryText, marginTop: 8 }]}>Start Line Center:</Text>
+        <Text style={[styles.metaValue, { color: colors.text }]}>{track.startLine.center.latitude.toFixed(5)}, {track.startLine.center.longitude.toFixed(5)}</Text>
+        <Text style={[styles.metaLabel, { color: colors.secondaryText, marginTop: 8 }]}>Finish Line Center:</Text>
+        <Text style={[styles.metaValue, { color: colors.text }]}>{track.finishLine.center.latitude.toFixed(5)}, {track.finishLine.center.longitude.toFixed(5)}</Text>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, width: '100%', paddingTop: 32 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+  backButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, marginRight: 12 },
+  title: { fontSize: 22, fontWeight: '700', flex: 1 },
+  subtitle: { fontSize: 14, paddingHorizontal: 16, marginTop: 4, marginBottom: 16 },
+  map: { flex: 1, marginHorizontal: 16, borderRadius: 16 },
+  meta: { padding: 16 },
+  metaLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4, letterSpacing: 0.3 },
+  metaValue: { fontSize: 13, fontVariant: ['tabular-nums'] },
+  flagMarker: { fontSize: 24 },
+});
+
+export default TrackDetailScreen;

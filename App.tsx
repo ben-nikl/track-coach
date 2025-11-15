@@ -6,7 +6,7 @@ import BottomMenu from './components/BottomMenu';
 import StatsScreen from './components/StatsScreen';
 import TrackListScreen from './components/TrackListScreen';
 import SettingsScreen from './components/SettingsScreen';
-import LapTimerScreen from './components/LapTimerScreen';
+import LapTimerScreen from './components/LapTimerScreen/LapTimerScreen';
 import { ThemeProvider, useTheme } from './ThemeProvider';
 
 const AppContent: React.FC = () => {

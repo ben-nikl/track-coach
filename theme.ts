@@ -18,9 +18,12 @@ export const COLORS = {
     fabShadow: '#000',
     border: '#E0E3E6',
     surface: '#FFFFFF',
-    danger: '#C62828',
+    danger: '#ff1a16',
     success: '#2E7D32',
-    warning: '#ED8F00',
+    warning: '#ffa601',
+    doveGray: '#737373',
+    mineShaft: '#3a3a3a',
+    mineShaft20: '#3a3a3a10',
   },
   dark: {
     background: '#191C25',
@@ -34,9 +37,10 @@ export const COLORS = {
     fabShadow: '#000',
     border: '#2A2D36',
     surface: '#23242A',
-    danger: '#EF5350',
+    danger: '#ff1a16',
     success: '#4CAF50',
-    warning: '#ED8F00',
+    warning: '#ffa601',
+    doveGray: '#737373',
   },
 };
 
