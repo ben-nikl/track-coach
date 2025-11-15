@@ -11,6 +11,7 @@ import { ThemeProvider, useTheme } from './ThemeProvider';
 
 const AppContent: React.FC = () => {
   const [selected, setSelected] = useState('home');
+  const [lapTrackName, setLapTrackName] = useState<string | null>(null);
   const { colors, mode } = useTheme();
   const items = [
     { id: 'home', label: 'Home' },
@@ -26,11 +27,11 @@ const AppContent: React.FC = () => {
         {selected === 'stats' ? (
           <StatsScreen />
         ) : selected === 'tracks' ? (
-          <TrackListScreen />
+          <TrackListScreen onStartSession={(track) => { setLapTrackName(track.name); setSelected('lap'); }} />
         ) : selected === 'settings' ? (
           <SettingsScreen />
         ) : selected === 'lap' ? (
-          <LapTimerScreen trackName="Silverstone GP" />
+          <LapTimerScreen trackName={lapTrackName || 'Session'} />
         ) : (
           <View style={styles.center}>
             <Text style={[styles.title, { color: colors.text }]}>{selected.toUpperCase()}</Text>

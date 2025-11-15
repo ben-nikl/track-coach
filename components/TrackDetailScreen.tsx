@@ -10,9 +10,10 @@ export interface TrackDetail extends Track {}
 interface TrackDetailScreenProps {
   track: TrackDetail;
   onBack: () => void;
+  onStartSession?: (track: TrackDetail) => void;
 }
 
-const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({ track, onBack }) => {
+const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({ track, onBack, onStartSession }) => {
   const { colors } = useTheme();
   const region: MapViewProps['region'] = {
     latitude: track.latitude,
@@ -63,14 +64,13 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({ track, onBack }) 
           />
         ))}
       </MapView>
-      <View style={styles.meta}>
-        <Text style={[styles.metaLabel, { color: colors.secondaryText }]}>Track Center:</Text>
-        <Text style={[styles.metaValue, { color: colors.text }]}>{track.latitude.toFixed(5)}, {track.longitude.toFixed(5)}</Text>
-        <Text style={[styles.metaLabel, { color: colors.secondaryText, marginTop: 8 }]}>Start Line Center:</Text>
-        <Text style={[styles.metaValue, { color: colors.text }]}>{track.startLine.center.latitude.toFixed(5)}, {track.startLine.center.longitude.toFixed(5)}</Text>
-        <Text style={[styles.metaLabel, { color: colors.secondaryText, marginTop: 8 }]}>Finish Line Center:</Text>
-        <Text style={[styles.metaValue, { color: colors.text }]}>{track.finishLine.center.latitude.toFixed(5)}, {track.finishLine.center.longitude.toFixed(5)}</Text>
-      </View>
+      <TouchableOpacity
+        style={[styles.startSessionButton, { backgroundColor: colors.primary }]}
+        activeOpacity={0.85}
+        onPress={() => onStartSession?.(track)}
+      >
+        <Text style={styles.startSessionText}>Start Session</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -86,6 +86,8 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4, letterSpacing: 0.3 },
   metaValue: { fontSize: 13, fontVariant: ['tabular-nums'] },
   flagMarker: { fontSize: 24 },
+  startSessionButton: { marginHorizontal: 16, marginTop: 16, marginBottom: 24, borderRadius: 16, paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
+  startSessionText: { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 0.5 },
 });
 
 export default TrackDetailScreen;

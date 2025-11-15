@@ -5,7 +5,9 @@ import { useTheme } from '../ThemeProvider';
 import TrackDetailScreen from './TrackDetailScreen';
 import { TRACKS, Track } from '../data/tracks';
 
-const TrackListScreen = () => {
+interface TrackListScreenProps { onStartSession?: (track: Track) => void }
+
+const TrackListScreen: React.FC<TrackListScreenProps> = ({ onStartSession }) => {
   const [search, setSearch] = useState('');
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const { colors } = useTheme();
@@ -15,7 +17,7 @@ const TrackListScreen = () => {
   );
 
   if (selectedTrack) {
-    return <TrackDetailScreen track={selectedTrack} onBack={() => setSelectedTrack(null)} />;
+    return <TrackDetailScreen track={selectedTrack} onBack={() => setSelectedTrack(null)} onStartSession={onStartSession} />;
   }
 
   return (
