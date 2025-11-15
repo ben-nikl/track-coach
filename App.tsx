@@ -8,10 +8,11 @@ import TrackListScreen from './components/TrackListScreen';
 import SettingsScreen from './components/SettingsScreen';
 import LapTimerScreen from './components/LapTimerScreen/LapTimerScreen';
 import { ThemeProvider, useTheme } from './ThemeProvider';
+import { Track } from './data/tracks';
 
 const AppContent: React.FC = () => {
   const [selected, setSelected] = useState('home');
-  const [lapTrackName, setLapTrackName] = useState<string | null>(null);
+  const [lapTrack, setLapTrack] = useState<Track | null>(null);
   const { colors, mode } = useTheme();
   const items = [
     { id: 'home', label: 'Home' },
@@ -27,11 +28,11 @@ const AppContent: React.FC = () => {
         {selected === 'stats' ? (
           <StatsScreen />
         ) : selected === 'tracks' ? (
-          <TrackListScreen onStartSession={(track) => { setLapTrackName(track.name); setSelected('lap'); }} />
+          <TrackListScreen onStartSession={(track) => { setLapTrack(track); setSelected('lap'); }} />
         ) : selected === 'settings' ? (
           <SettingsScreen />
         ) : selected === 'lap' ? (
-          <LapTimerScreen trackName={lapTrackName || 'Session'} />
+          <LapTimerScreen trackData={lapTrack} onBack={() => setSelected('tracks')} />
         ) : (
           <View style={styles.center}>
             <Text style={[styles.title, { color: colors.text }]}>{selected.toUpperCase()}</Text>
