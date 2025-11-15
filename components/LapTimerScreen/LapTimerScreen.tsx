@@ -11,6 +11,7 @@ import {computePerpendicularSegment} from '../../helpers/generatePerpendicularSe
 import * as Location from 'expo-location';
 import {intersectionParamT, segmentsIntersect} from '../../helpers/geo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {useLapSession} from '../LapSessionContext';
 
 export interface LapTimerScreenProps {
     trackData: Track | null;
@@ -22,6 +23,11 @@ export interface LapTimerScreenProps {
 interface SectorTimingState {
     id: string;
     timeMs?: number;
+}
+
+interface ToastMsg {
+    id: string;
+    text: string;
 }
 
 const LINE_HALF_WIDTH_M = 12; // width for perpendicular timing lines
@@ -45,6 +51,13 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
     const locationSubRef = useRef<Location.LocationSubscription | null>(null);
     const [permissionError, setPermissionError] = useState<string | null>(null);
 
+    // Toast messages state
+    const [toastMessages, setToastMessages] = useState<ToastMsg[]>([]);
+    const prevSectorCrossMsRef = useRef<number | null>(null);
+
+    // Lap session logging
+    const {logStart, logSector, logFinish} = useLapSession();
+
     // Precompute timing lines when track changes
     const startFinishSegments = React.useMemo(() => {
         if (!trackData) return null;
@@ -59,6 +72,11 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
             id: sec.id,
             seg: computePerpendicularSegment(sec.center, sec.trackP1, sec.trackP2, LINE_HALF_WIDTH_M)
         }));
+    }, [trackData]);
+
+    const sectorBoundaryLines = React.useMemo(() => {
+        if (!trackData) return [];
+        return trackData.sectors.filter(sec => sec.id !== trackData.startLine.id && sec.id !== trackData.finishLine.id);
     }, [trackData]);
 
     // Reset timing when track changes
@@ -87,23 +105,57 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
         load();
     }, [trackData]);
 
+    const addToast = (text: string) => {
+        const id = Math.random().toString(36).slice(2);
+        setToastMessages(msgs => [...msgs, {id, text}]);
+        setTimeout(() => setToastMessages(msgs => msgs.filter(m => m.id !== id)), 2200);
+    };
+
     // Helper to mark sector crossing
     const markSectorCrossing = (sectorId: string, crossingTimeMs: number) => {
-        setSectorsTiming(prev => prev.some(s => s.id === sectorId)
-            ? prev
-            : [...prev, {id: sectorId, timeMs: crossingTimeMs - (currentLapStartMs || crossingTimeMs)}]);
+        setSectorsTiming(prev => {
+            if (prev.some(s => s.id === sectorId)) return prev;
+            const base = prevSectorCrossMsRef.current ?? currentLapStartMs ?? crossingTimeMs;
+            const split = crossingTimeMs - base;
+            const lapElapsed = currentLapStartMs != null ? crossingTimeMs - currentLapStartMs : split;
+            prevSectorCrossMsRef.current = crossingTimeMs;
+            addToast(`SECTOR split #${prev.length + 1}: ${formatLapTime(split)}`);
+            if (currentLapStartMs != null) {
+                logSector(crossingTimeMs, lapElapsed, split, prev.length + 1);
+            }
+            return [...prev, {id: sectorId, timeMs: split}];
+        });
     };
 
     // Start a new lap
     const startLap = (startTimeMs: number) => {
         setCurrentLapStartMs(startTimeMs);
-        setSectorsTiming([]); // reset sector times for new lap
+        setSectorsTiming([]);
+        prevSectorCrossMsRef.current = startTimeMs;
+        addToast('Lap started');
+        logStart(startTimeMs);
     };
 
     // Finish current lap
     const finishLap = (finishTimeMs: number) => {
         if (currentLapStartMs == null) return;
+        const lastBoundaryTimeBase = prevSectorCrossMsRef.current ?? currentLapStartMs;
+        const finalSplit = finishTimeMs - lastBoundaryTimeBase;
         const lapDuration = finishTimeMs - currentLapStartMs;
+        // Build sector splits array (existing splits + final)
+        const sectorSplitsMs = [...sectorsTiming.map(s => s.timeMs || 0), finalSplit];
+        // Log final sector and lap BEFORE state reset
+        const lapElapsed = finishTimeMs - currentLapStartMs;
+        addToast(`Lap finished: ${formatLapTime(lapDuration)}`);
+        logFinish(finishTimeMs, lapElapsed, lapDuration, finalSplit, sectorSplitsMs);
+        setSectorsTiming(prev => {
+            const expectedSplitsTotal = sectorBoundaryLines.length + 1;
+            if (prev.length < expectedSplitsTotal) {
+                addToast(`SECTOR split #${prev.length + 1}: ${formatLapTime(finalSplit)}`);
+                return [...prev, {id: 'final', timeMs: finalSplit}];
+            }
+            return prev;
+        });
         setLapTimes(prev => {
             const updated = [...prev, lapDuration];
             if (trackData) {
@@ -114,7 +166,9 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
         });
         setLastLapMs(lapDuration);
         setBestLapMs(prev => (prev == null || lapDuration < prev ? lapDuration : prev));
+        // Start new lap
         startLap(finishTimeMs);
+        prevSectorCrossMsRef.current = finishTimeMs;
     };
 
     // Subscribe to location updates
@@ -151,7 +205,7 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
                         if (segmentsIntersect(p1, p2, start.start, start.end)) {
                             const tParam = intersectionParamT(p1, p2, start.start, start.end) ?? 0;
                             const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                            if (crossingMs - lastStartCrossRef.value > 500) { // 0.5s debounce
+                            if (crossingMs - lastStartCrossRef.value > 500) {
                                 lastStartCrossRef.value = crossingMs;
                                 startLap(crossingMs);
                             }
@@ -160,10 +214,14 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
                     }
 
                     const {finish} = startFinishSegments;
+                    const identicalStartFinish = trackData.startLine.id === trackData.finishLine.id;
                     if (segmentsIntersect(p1, p2, finish.start, finish.end)) {
                         const tParam = intersectionParamT(p1, p2, finish.start, finish.end) ?? 0;
                         const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                        if (crossingMs - lastFinishCrossRef.value > 500) {
+                        // If identical start/finish and lap just begun, require minimum elapsed to treat as finish
+                        if (identicalStartFinish && currentLapStartMs != null && crossingMs - currentLapStartMs < 1000) {
+                            // ignore very fast re-cross within 1s to avoid double-start
+                        } else if (crossingMs - lastFinishCrossRef.value > 500) {
                             lastFinishCrossRef.value = crossingMs;
                             finishLap(crossingMs);
                         }
@@ -194,10 +252,14 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
     const lapNumber = lapTimes.length + (currentLapStartMs != null ? 1 : 0);
 
     // Build sector boxes list according to track.sectors order
-    const sectorBoxes = trackData?.sectors.map((sec, idx) => {
-        const timing = sectorsTiming.find(s => s.id === sec.id);
-        return {index: idx + 1, time: timing?.timeMs, delta: undefined};
-    }) || [];
+    const sectorBoxes = React.useMemo(() => {
+        const splitsExpected = sectorBoundaryLines.length + 1;
+        const boxes = [] as { index: number; time?: number }[];
+        for (let i = 0; i < splitsExpected; i++) {
+            boxes.push({index: i + 1, time: sectorsTiming[i]?.timeMs});
+        }
+        return boxes;
+    }, [sectorsTiming, sectorBoundaryLines]);
 
     // UI Panels content
     const ghostLapMs = bestLapMs ?? undefined;
@@ -213,9 +275,20 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
     }
 
     // Helper render functions to keep JSX clean
+    const ToastOverlay = () => (
+        <View pointerEvents="none" style={styles.toastContainer}>
+            {toastMessages.map(t => (
+                <View key={t.id} style={[styles.toast, {backgroundColor: colors.surface, borderColor: colors.border}]}>
+                    <Text style={{color: colors.text, fontSize: 12, fontWeight: '600'}}>{t.text}</Text>
+                </View>
+            ))}
+        </View>
+    );
+
     const renderLandscape = () => (
         <SafeAreaView
             style={[styles.containerLandscape, {paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16}]}>
+            <ToastOverlay/>
             <View style={styles.headerRow}>
                 <Pressable accessibilityRole="button" onPress={onBack} style={styles.headerBtn}><Text
                     style={[styles.headerBtnText, {color: colors.text}]}>◄</Text></Pressable>
@@ -333,6 +406,18 @@ const styles = StyleSheet.create({
     landscapeRight: {flex: 1, justifyContent: 'flex-start'},
     bestLapLandscape: {alignItems: 'center'},
     timersContainer: {flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16},
+    toastContainer: {position: 'absolute', top: 8, left: 0, right: 0, alignItems: 'center', zIndex: 20},
+    toast: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        marginBottom: 6,
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 3
+    },
 });
 
 export default LapTimerScreen;
