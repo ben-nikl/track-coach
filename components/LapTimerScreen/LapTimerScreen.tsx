@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {Pressable, StyleSheet, Text, useWindowDimensions, View} from 'react-native';
+import {Platform, Pressable, StyleSheet, Text, useWindowDimensions, View} from 'react-native';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTheme} from '../../ThemeProvider';
 import LapPanel from './LapPanel';
@@ -9,7 +9,7 @@ import {formatLapTime} from './format';
 import {Track} from '../../data/tracks';
 import {computePerpendicularSegment} from '../../helpers/generatePerpendicularSectors';
 import * as Location from 'expo-location';
-import {intersectionParamT, segmentsIntersect} from '../../helpers/geo';
+import {distancePointToSegmentMeters, intersectionParamT, segmentsIntersect} from '../../helpers/geo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useLapSession} from '../LapSessionContext';
 
@@ -31,7 +31,12 @@ interface ToastMsg {
 }
 
 const LINE_HALF_WIDTH_M = 12; // width for perpendicular timing lines
-const LOCATION_INTERVAL_MS = 250; // typical update cadence
+const REQUIRED_ACCURACY_M = 15; // ignore fixes with worse accuracy for timing precision
+// Debounce & hysteresis constants
+const START_DEBOUNCE_MS = 1200; // minimum ms between start line crossings
+const SEGMENT_DEBOUNCE_MS = 800; // minimum ms between internal segment crossings
+const FINISH_DEBOUNCE_MS = 800; // minimum ms between finish line crossings
+const LINE_REARM_DISTANCE_M = 6; // must move away this far before the line re-arms for another crossing
 
 const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMenu}) => {
     const {colors} = useTheme();
@@ -45,18 +50,27 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
     const [lastLapMs, setLastLapMs] = useState<number | null>(null);
     const [bestLapMs, setBestLapMs] = useState<number | null>(null);
     const [sectorsTiming, setSectorsTiming] = useState<SectorTimingState[]>([]); // current lap sector times
+    const [nowMs, setNowMs] = useState<number>(Date.now()); // live ticker for current lap
 
     // Location tracking refs
     const prevLocationRef = useRef<Location.LocationObject | null>(null);
     const locationSubRef = useRef<Location.LocationSubscription | null>(null);
     const [permissionError, setPermissionError] = useState<string | null>(null);
+    // Added missing refs for line arming & sector timing debounce
+    const startArmedRef = useRef<boolean>(true); // re-armed when distance >= LINE_REARM_DISTANCE_M
+    const finishArmedRef = useRef<boolean>(true); // mirrors start when identical start/finish
+    const segmentArmedRef = useRef<Record<string, boolean>>({}); // per internal sector boundary line
+    const lastSectorCrossTimesRef = useRef<Record<string, number>>({}); // last crossing timestamp per sector for debounce
 
     // Toast messages state
     const [toastMessages, setToastMessages] = useState<ToastMsg[]>([]);
     const prevSectorCrossMsRef = useRef<number | null>(null);
+    // Removed distanceToStartM; now tracking all line distances (start + internal sector lines + finish)
+    const [lineDistances, setLineDistances] = useState<{ id: string; label: string; distance: number }[]>([]);
 
     // Lap session logging
     const {logStart, logSector, logFinish} = useLapSession();
+    const defer = (fn: () => void) => setTimeout(fn, 0);
 
     // Precompute timing lines when track changes
     const startFinishSegments = React.useMemo(() => {
@@ -76,7 +90,8 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
 
     const sectorBoundaryLines = React.useMemo(() => {
         if (!trackData) return [];
-        return trackData.sectors.filter(sec => sec.id !== trackData.startLine.id && sec.id !== trackData.finishLine.id);
+        // sectors now only contains internal boundary lines (may be empty)
+        return trackData.sectors;
     }, [trackData]);
 
     // Reset timing when track changes
@@ -121,7 +136,7 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
             prevSectorCrossMsRef.current = crossingTimeMs;
             addToast(`SECTOR split #${prev.length + 1}: ${formatLapTime(split)}`);
             if (currentLapStartMs != null) {
-                logSector(crossingTimeMs, lapElapsed, split, prev.length + 1);
+                defer(() => logSector(crossingTimeMs, lapElapsed, split, prev.length + 1));
             }
             return [...prev, {id: sectorId, timeMs: split}];
         });
@@ -132,8 +147,9 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
         setCurrentLapStartMs(startTimeMs);
         setSectorsTiming([]);
         prevSectorCrossMsRef.current = startTimeMs;
+        setNowMs(Date.now());
         addToast('Lap started');
-        logStart(startTimeMs);
+        defer(() => logStart(startTimeMs));
     };
 
     // Finish current lap
@@ -147,9 +163,9 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
         // Log final sector and lap BEFORE state reset
         const lapElapsed = finishTimeMs - currentLapStartMs;
         addToast(`Lap finished: ${formatLapTime(lapDuration)}`);
-        logFinish(finishTimeMs, lapElapsed, lapDuration, finalSplit, sectorSplitsMs);
+        defer(() => logFinish(finishTimeMs, lapElapsed, lapDuration, finalSplit, sectorSplitsMs));
         setSectorsTiming(prev => {
-            const expectedSplitsTotal = sectorBoundaryLines.length + 1;
+            const expectedSplitsTotal = sectorBoundaryLines.length + 1; // internal boundaries + final sector to finish
             if (prev.length < expectedSplitsTotal) {
                 addToast(`SECTOR split #${prev.length + 1}: ${formatLapTime(finalSplit)}`);
                 return [...prev, {id: 'final', timeMs: finalSplit}];
@@ -166,9 +182,16 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
         });
         setLastLapMs(lapDuration);
         setBestLapMs(prev => (prev == null || lapDuration < prev ? lapDuration : prev));
-        // Start new lap
-        startLap(finishTimeMs);
-        prevSectorCrossMsRef.current = finishTimeMs;
+        // Start new lap only if start and finish are the same line; otherwise wait for next start crossing
+        const identicalStartFinish = trackData && trackData.startLine.id === trackData.finishLine.id;
+        if (identicalStartFinish) {
+            startLap(finishTimeMs);
+            prevSectorCrossMsRef.current = finishTimeMs;
+        } else {
+            setCurrentLapStartMs(null);
+            setSectorsTiming([]);
+            prevSectorCrossMsRef.current = null;
+        }
     };
 
     // Subscribe to location updates
@@ -184,54 +207,100 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
                 setPermissionError('Location permission denied');
                 return;
             }
+            // iOS: hint to OS about navigation usage (ignore if unsupported)
+            if (Platform.OS === 'ios' && (Location as any).setActivityTypeAsync) {
+                try {
+                    await (Location as any).setActivityTypeAsync('automotiveNavigation');
+                } catch {
+                }
+            }
             locationSubRef.current = await Location.watchPositionAsync(
                 {
                     accuracy: Location.Accuracy.BestForNavigation,
-                    timeInterval: LOCATION_INTERVAL_MS,
-                    distanceInterval: 0
+                    timeInterval: 0,
+                    distanceInterval: 0,
                 },
                 loc => {
                     if (cancelled) return;
+                    if (loc.coords.accuracy != null && loc.coords.accuracy > REQUIRED_ACCURACY_M) return;
                     const prev = prevLocationRef.current;
                     prevLocationRef.current = loc;
                     if (!prev || !startFinishSegments) return;
+                    const {start, finish} = startFinishSegments;
                     const p1 = {latitude: prev.coords.latitude, longitude: prev.coords.longitude};
                     const p2 = {latitude: loc.coords.latitude, longitude: loc.coords.longitude};
                     const tPrev = prev.timestamp;
                     const tCur = loc.timestamp;
 
+                    // Distances to timing lines
+                    try {
+                        const sameLine = Math.abs(start.start.latitude - finish.start.latitude) < 1e-9 &&
+                            Math.abs(start.start.longitude - finish.start.longitude) < 1e-9 &&
+                            Math.abs(start.end.latitude - finish.end.latitude) < 1e-9 &&
+                            Math.abs(start.end.longitude - finish.end.longitude) < 1e-9;
+                        const distances: { id: string; label: string; distance: number }[] = [];
+                        const startDist = distancePointToSegmentMeters(p2, start.start, start.end);
+                        // Hysteresis re-arm for start line
+                        if (!startArmedRef.current && startDist >= LINE_REARM_DISTANCE_M) startArmedRef.current = true;
+                        if (sameLine) {
+                            distances.push({id: trackData.startLine.id, label: 'START/FINISH', distance: startDist});
+                        } else {
+                            distances.push({id: trackData.startLine.id, label: 'START', distance: startDist});
+                        }
+                        sectorSegments.forEach(sec => {
+                            const d = distancePointToSegmentMeters(p2, sec.seg.start, sec.seg.end);
+                            // Re-arm hysteresis for segment
+                            if (!segmentArmedRef.current[sec.id] && d >= LINE_REARM_DISTANCE_M) segmentArmedRef.current[sec.id] = true;
+                            distances.push({id: sec.id, label: sec.id.toUpperCase(), distance: d});
+                        });
+                        if (!sameLine) {
+                            const finishDist = distancePointToSegmentMeters(p2, finish.start, finish.end);
+                            if (!finishArmedRef.current && finishDist >= LINE_REARM_DISTANCE_M) finishArmedRef.current = true;
+                            distances.push({id: trackData.finishLine.id, label: 'FINISH', distance: finishDist});
+                        } else {
+                            // identical line: finishArmedRef mirrors startArmedRef
+                            finishArmedRef.current = startArmedRef.current;
+                        }
+                        setLineDistances(distances);
+                    } catch {
+                    }
+
                     if (currentLapStartMs == null) {
-                        const {start} = startFinishSegments;
-                        if (segmentsIntersect(p1, p2, start.start, start.end)) {
+                        // Attempt start crossing only if armed & debounce window passed
+                        if (startArmedRef.current && segmentsIntersect(p1, p2, start.start, start.end)) {
                             const tParam = intersectionParamT(p1, p2, start.start, start.end) ?? 0;
                             const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                            if (crossingMs - lastStartCrossRef.value > 500) {
+                            if (crossingMs - lastStartCrossRef.value > START_DEBOUNCE_MS) {
                                 lastStartCrossRef.value = crossingMs;
+                                startArmedRef.current = false; // disarm until moved away
                                 startLap(crossingMs);
                             }
                         }
                         return;
                     }
 
-                    const {finish} = startFinishSegments;
-                    const identicalStartFinish = trackData.startLine.id === trackData.finishLine.id;
-                    if (segmentsIntersect(p1, p2, finish.start, finish.end)) {
+                    // Finish line crossing
+                    if (finishArmedRef.current && segmentsIntersect(p1, p2, finish.start, finish.end)) {
                         const tParam = intersectionParamT(p1, p2, finish.start, finish.end) ?? 0;
                         const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                        // If identical start/finish and lap just begun, require minimum elapsed to treat as finish
-                        if (identicalStartFinish && currentLapStartMs != null && crossingMs - currentLapStartMs < 1000) {
-                            // ignore very fast re-cross within 1s to avoid double-start
-                        } else if (crossingMs - lastFinishCrossRef.value > 500) {
+                        if (crossingMs - lastFinishCrossRef.value > FINISH_DEBOUNCE_MS) {
                             lastFinishCrossRef.value = crossingMs;
+                            finishArmedRef.current = false;
                             finishLap(crossingMs);
                         }
                     } else {
+                        // Segment crossings
                         sectorSegments.forEach(sec => {
-                            if (sec.id === trackData.startLine.id || sec.id === trackData.finishLine.id) return;
+                            if (!segmentArmedRef.current[sec.id]) return; // not re-armed yet
                             if (segmentsIntersect(p1, p2, sec.seg.start, sec.seg.end)) {
                                 const tParam = intersectionParamT(p1, p2, sec.seg.start, sec.seg.end) ?? 0;
                                 const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                                markSectorCrossing(sec.id, crossingMs);
+                                const last = lastSectorCrossTimesRef.current[sec.id] || 0;
+                                if (crossingMs - last > SEGMENT_DEBOUNCE_MS) {
+                                    lastSectorCrossTimesRef.current[sec.id] = crossingMs;
+                                    segmentArmedRef.current[sec.id] = false; // disarm until moved away
+                                    markSectorCrossing(sec.id, crossingMs);
+                                }
                             }
                         });
                     }
@@ -247,19 +316,37 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
         };
     }, [trackData, startFinishSegments, sectorSegments, currentLapStartMs]);
 
+    // Live ticking effect for current lap
+    useEffect(() => {
+        if (currentLapStartMs == null) return;
+        let raf: number;
+        let active = true;
+        const tick = () => {
+            if (!active) return;
+            setNowMs(Date.now());
+            raf = requestAnimationFrame(tick);
+        };
+        tick();
+        return () => {
+            active = false;
+            if (raf) cancelAnimationFrame(raf);
+        };
+    }, [currentLapStartMs]);
+
     // Derived values for UI
-    const currentLapElapsedMs = currentLapStartMs != null ? Date.now() - currentLapStartMs : null;
+    const currentLapElapsedMs = currentLapStartMs != null ? nowMs - currentLapStartMs : null;
     const lapNumber = lapTimes.length + (currentLapStartMs != null ? 1 : 0);
 
     // Build sector boxes list according to track.sectors order
     const sectorBoxes = React.useMemo(() => {
-        const splitsExpected = sectorBoundaryLines.length + 1;
-        const boxes = [] as { index: number; time?: number }[];
-        for (let i = 0; i < splitsExpected; i++) {
-            boxes.push({index: i + 1, time: sectorsTiming[i]?.timeMs});
+        const totalSectors = sectorBoundaryLines.length + 1; // internal boundaries + final sector (finish)
+        const activeSectorIndex = currentLapStartMs != null ? Math.min(sectorsTiming.length + 1, totalSectors) : null;
+        const boxes = [] as { index: number; time?: number; active?: boolean }[];
+        for (let i = 0; i < totalSectors; i++) {
+            boxes.push({index: i + 1, time: sectorsTiming[i]?.timeMs, active: activeSectorIndex === i + 1});
         }
         return boxes;
-    }, [sectorsTiming, sectorBoundaryLines]);
+    }, [sectorsTiming, sectorBoundaryLines, currentLapStartMs]);
 
     // UI Panels content
     const ghostLapMs = bestLapMs ?? undefined;
@@ -323,6 +410,19 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
                     Current Lap: {formatLapTime(currentLapElapsedMs)}
                 </Text>
             )}
+            {/* Distances panel */}
+            {lineDistances.length > 0 && (
+                <LapPanel title="Distances" style={{marginTop: 8}}>
+                    <View style={{flexDirection: 'row', flexWrap: 'wrap', rowGap: 4, columnGap: 12}}>
+                        {lineDistances.map(ld => (
+                            <Text key={ld.id} style={{
+                                color: colors.secondaryText,
+                                fontSize: 12
+                            }}>{ld.label}: {ld.distance.toFixed(1)} m</Text>
+                        ))}
+                    </View>
+                </LapPanel>
+            )}
             {permissionError && (
                 <Text style={{color: colors.danger, textAlign: 'center', marginTop: 4}}>{permissionError}</Text>
             )}
@@ -347,6 +447,16 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({trackData, onBack, onMen
                     <Text style={{color: colors.accent, marginTop: 8}}>
                         Current: {formatLapTime(currentLapElapsedMs)}
                     </Text>
+                )}
+                {lineDistances.length > 0 && (
+                    <View style={{marginTop: 6, alignItems: 'center'}}>
+                        {lineDistances.map(ld => (
+                            <Text key={ld.id} style={{
+                                color: colors.secondaryText,
+                                fontSize: 12
+                            }}>{ld.label}: {ld.distance.toFixed(1)} m</Text>
+                        ))}
+                    </View>
                 )}
             </View>
             <View style={styles.sectorsGridPortrait}>
