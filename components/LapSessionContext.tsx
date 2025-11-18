@@ -42,6 +42,173 @@ interface ToastMsg {
     text: string
 }
 
+// Helper types
+interface Point {
+    latitude: number;
+    longitude: number;
+}
+
+interface LineSegment {
+    start: Point;
+    end: Point;
+}
+
+interface DistanceResult {
+    id: string;
+    label: string;
+    distance: number;
+}
+
+// Helper functions
+function calculateCrossingTime(tPrev: number, tCur: number, p1: Point, p2: Point, lineStart: Point, lineEnd: Point): number | null {
+    if (!segmentsIntersect(p1, p2, lineStart, lineEnd)) return null;
+    const tParam = intersectionParamT(p1, p2, lineStart, lineEnd) ?? 0;
+    return Math.round(tPrev + tParam * (tCur - tPrev));
+}
+
+function computeLineDistances(
+    currentPoint: Point,
+    trackData: Track,
+    startSegment: LineSegment,
+    finishSegment: LineSegment,
+    sectorSegments: { id: string; seg: LineSegment }[],
+    isSameStartFinish: boolean
+): DistanceResult[] {
+    const distances: DistanceResult[] = [];
+
+    const startDist = distancePointToSegmentMeters(currentPoint, startSegment.start, startSegment.end);
+    distances.push({
+        id: trackData.startLine.id,
+        label: isSameStartFinish ? 'START/FINISH' : 'START',
+        distance: startDist
+    });
+
+    sectorSegments.forEach(sec => {
+        const d = distancePointToSegmentMeters(currentPoint, sec.seg.start, sec.seg.end);
+        distances.push({id: sec.id, label: sec.id.toUpperCase(), distance: d});
+    });
+
+    if (!isSameStartFinish) {
+        const finishDist = distancePointToSegmentMeters(currentPoint, finishSegment.start, finishSegment.end);
+        const finishId = trackData.finishLine ? trackData.finishLine.id : trackData.startLine.id;
+        distances.push({id: finishId, label: 'FINISH', distance: finishDist});
+    }
+
+    return distances;
+}
+
+function updateLineArmingStates(
+    currentPoint: Point,
+    startSegment: LineSegment,
+    finishSegment: LineSegment,
+    sectorSegments: { id: string; seg: LineSegment }[],
+    isSameStartFinish: boolean,
+    startArmedRef: { current: boolean },
+    finishArmedRef: { current: boolean },
+    segmentArmedRef: { current: Record<string, boolean> },
+    rearmDistance: number
+) {
+    const startDist = distancePointToSegmentMeters(currentPoint, startSegment.start, startSegment.end);
+    if (!startArmedRef.current && startDist >= rearmDistance) {
+        startArmedRef.current = true;
+    }
+
+    sectorSegments.forEach(sec => {
+        const d = distancePointToSegmentMeters(currentPoint, sec.seg.start, sec.seg.end);
+        if (!segmentArmedRef.current[sec.id] && d >= rearmDistance) {
+            segmentArmedRef.current[sec.id] = true;
+        }
+    });
+
+    if (!isSameStartFinish) {
+        const finishDist = distancePointToSegmentMeters(currentPoint, finishSegment.start, finishSegment.end);
+        if (!finishArmedRef.current && finishDist >= rearmDistance) {
+            finishArmedRef.current = true;
+        }
+    } else if (!finishArmedRef.current && startDist >= rearmDistance) {
+        finishArmedRef.current = true;
+    }
+}
+
+function checkStartLineCrossing(
+    p1: Point,
+    p2: Point,
+    tPrev: number,
+    tCur: number,
+    startSegment: LineSegment,
+    isSameStartFinish: boolean,
+    startArmedRef: { current: boolean },
+    finishArmedRef: { current: boolean },
+    lastStartCrossRef: { current: number },
+    startLapCallback: ((t: number) => void) | null,
+    debounceMs: number
+): boolean {
+    if (!startArmedRef.current) return false;
+
+    const crossingMs = calculateCrossingTime(tPrev, tCur, p1, p2, startSegment.start, startSegment.end);
+    if (crossingMs === null) return false;
+
+    if (crossingMs - lastStartCrossRef.current > debounceMs) {
+        lastStartCrossRef.current = crossingMs;
+        startArmedRef.current = false;
+        startLapCallback?.(crossingMs);
+        if (isSameStartFinish) finishArmedRef.current = false;
+        return true;
+    }
+    return false;
+}
+
+function checkFinishLineCrossing(
+    p1: Point,
+    p2: Point,
+    tPrev: number,
+    tCur: number,
+    finishSegment: LineSegment,
+    finishArmedRef: { current: boolean },
+    lastFinishCrossRef: { current: number },
+    finishLapCallback: ((t: number) => void) | null,
+    debounceMs: number
+): boolean {
+    if (!finishArmedRef.current) return false;
+
+    const crossingMs = calculateCrossingTime(tPrev, tCur, p1, p2, finishSegment.start, finishSegment.end);
+    if (crossingMs === null) return false;
+
+    if (crossingMs - lastFinishCrossRef.current > debounceMs) {
+        lastFinishCrossRef.current = crossingMs;
+        finishArmedRef.current = false;
+        finishLapCallback?.(crossingMs);
+        return true;
+    }
+    return false;
+}
+
+function checkSectorCrossings(
+    p1: Point,
+    p2: Point,
+    tPrev: number,
+    tCur: number,
+    sectorSegments: { id: string; seg: LineSegment }[],
+    segmentArmedRef: { current: Record<string, boolean> },
+    lastSectorCrossTimesRef: { current: Record<string, number> },
+    markSectorCallback: ((id: string, t: number) => void) | null,
+    debounceMs: number
+) {
+    sectorSegments.forEach(sec => {
+        if (!segmentArmedRef.current[sec.id]) return;
+
+        const crossingMs = calculateCrossingTime(tPrev, tCur, p1, p2, sec.seg.start, sec.seg.end);
+        if (crossingMs === null) return;
+
+        const last = lastSectorCrossTimesRef.current[sec.id] || 0;
+        if (crossingMs - last > debounceMs) {
+            lastSectorCrossTimesRef.current[sec.id] = crossingMs;
+            segmentArmedRef.current[sec.id] = false;
+            markSectorCallback?.(sec.id, crossingMs);
+        }
+    });
+}
+
 const LINE_HALF_WIDTH_M = 12;
 const REQUIRED_ACCURACY_M = 15;
 const START_DEBOUNCE_MS = 1200;
@@ -362,68 +529,88 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     // Replace processFusedLike useCallback with stable function using refs to avoid dependency churn
     const processFusedLike = (tPrev: number, latPrev: number, lonPrev: number, tCur: number, latCur: number, lonCur: number) => {
         if (crossingLockRef.current) return;
+
         const segs = startFinishSegmentsRef.current;
-        const td = trackDataRef.current || trackData; // fallback if ref not yet synced
+        const td = trackDataRef.current || trackData;
         if (!segs || !td) return;
+
         const {start, finish} = segs;
-        const p1 = {latitude: latPrev, longitude: lonPrev};
-        const p2 = {latitude: latCur, longitude: lonCur};
+        const p1: Point = {latitude: latPrev, longitude: lonPrev};
+        const p2: Point = {latitude: latCur, longitude: lonCur};
+
         try {
-            const sameLine = isSameStartFinishRef.current;
-            const distances: { id: string; label: string; distance: number }[] = [];
-            const startDist = distancePointToSegmentMeters(p2, start.start, start.end);
-            if (!startArmedRef.current && startDist >= LINE_REARM_DISTANCE_M) startArmedRef.current = true;
-            distances.push({id: td.startLine.id, label: sameLine ? 'START/FINISH' : 'START', distance: startDist});
-            sectorSegmentsRef.current.forEach(sec => {
-                const d = distancePointToSegmentMeters(p2, sec.seg.start, sec.seg.end);
-                if (!segmentArmedRef.current[sec.id] && d >= LINE_REARM_DISTANCE_M) segmentArmedRef.current[sec.id] = true;
-                distances.push({id: sec.id, label: sec.id.toUpperCase(), distance: d});
-            });
-            if (!sameLine) {
-                const finishDist = distancePointToSegmentMeters(p2, finish.start, finish.end);
-                if (!finishArmedRef.current && finishDist >= LINE_REARM_DISTANCE_M) finishArmedRef.current = true;
-                const finishId = td.finishLine ? td.finishLine.id : td.startLine.id;
-                distances.push({id: finishId, label: 'FINISH', distance: finishDist});
-            } else if (!finishArmedRef.current && startDist >= LINE_REARM_DISTANCE_M) finishArmedRef.current = true;
+            // Update line arming states
+            updateLineArmingStates(
+                p2,
+                start,
+                finish,
+                sectorSegmentsRef.current,
+                isSameStartFinishRef.current,
+                startArmedRef,
+                finishArmedRef,
+                segmentArmedRef,
+                LINE_REARM_DISTANCE_M
+            );
+
+            // Compute and update distances
+            const distances = computeLineDistances(
+                p2,
+                td,
+                start,
+                finish,
+                sectorSegmentsRef.current,
+                isSameStartFinishRef.current
+            );
             setLineDistances(distances);
         } catch {
         }
+
         if (!sessionActiveRef.current) return;
+
+        // Check for start line crossing when lap hasn't started
         if (currentLapStartMsRef.current == null) {
-            if (startArmedRef.current && segmentsIntersect(p1, p2, start.start, start.end)) {
-                const tParam = intersectionParamT(p1, p2, start.start, start.end) ?? 0;
-                const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                if (crossingMs - lastStartCrossRef.current > START_DEBOUNCE_MS) {
-                    lastStartCrossRef.current = crossingMs;
-                    startArmedRef.current = false;
-                    startLapRef.current?.(crossingMs);
-                    if (isSameStartFinishRef.current) finishArmedRef.current = false;
-                }
-            }
+            checkStartLineCrossing(
+                p1,
+                p2,
+                tPrev,
+                tCur,
+                start,
+                isSameStartFinishRef.current,
+                startArmedRef,
+                finishArmedRef,
+                lastStartCrossRef,
+                startLapRef.current,
+                START_DEBOUNCE_MS
+            );
             return;
         }
-        if (finishArmedRef.current && segmentsIntersect(p1, p2, finish.start, finish.end)) {
-            const tParam = intersectionParamT(p1, p2, finish.start, finish.end) ?? 0;
-            const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-            if (crossingMs - lastFinishCrossRef.current > FINISH_DEBOUNCE_MS) {
-                lastFinishCrossRef.current = crossingMs;
-                finishArmedRef.current = false;
-                finishLapRef.current?.(crossingMs);
-            }
-        } else {
-            sectorSegmentsRef.current.forEach(sec => {
-                if (!segmentArmedRef.current[sec.id]) return;
-                if (segmentsIntersect(p1, p2, sec.seg.start, sec.seg.end)) {
-                    const tParam = intersectionParamT(p1, p2, sec.seg.start, sec.seg.end) ?? 0;
-                    const crossingMs = Math.round(tPrev + tParam * (tCur - tPrev));
-                    const last = lastSectorCrossTimesRef.current[sec.id] || 0;
-                    if (crossingMs - last > SEGMENT_DEBOUNCE_MS) {
-                        lastSectorCrossTimesRef.current[sec.id] = crossingMs;
-                        segmentArmedRef.current[sec.id] = false;
-                        markSectorCrossingRef.current?.(sec.id, crossingMs);
-                    }
-                }
-            });
+
+        // Check for finish line crossing
+        const finishCrossed = checkFinishLineCrossing(
+            p1,
+            p2,
+            tPrev,
+            tCur,
+            finish,
+            finishArmedRef,
+            lastFinishCrossRef,
+            finishLapRef.current,
+            FINISH_DEBOUNCE_MS
+        );
+
+        // Only check sector crossings if finish line wasn't crossed
+        if (!finishCrossed) {
+            checkSectorCrossings(
+                p1,
+                p2,
+                tPrev,
+                tCur,
+                sectorSegmentsRef.current,
+                segmentArmedRef,
+                lastSectorCrossTimesRef,
+                markSectorCrossingRef.current,
+                SEGMENT_DEBOUNCE_MS
+            );
         }
     };
 
