@@ -9,12 +9,11 @@ import SettingsScreen from './components/SettingsScreen';
 import LapTimerScreen from './components/LapTimerScreen/LapTimerScreen';
 import {ThemeProvider, useTheme} from './ThemeProvider';
 import SessionLogScreen from './components/SessionLogScreen';
-import {LapSessionProvider, useLapSession} from './components/LapSessionContext';
+import {LapSessionProvider} from './components/LapSessionContext';
 
 const AppContent: React.FC = () => {
     const [selected, setSelected] = useState('home');
     const {colors, mode} = useTheme();
-    const {trackData} = useLapSession();
     const items = [
         {id: 'home', label: 'Home'},
         {id: 'lap', label: 'Lap'},

@@ -12,15 +12,35 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": { "supportsTablet": false, "infoPlist": {
-      "UIBackgroundModes": ["location", "processing"]
-    }},
-    "android": { "package": "com.example.trackcoach", "permissions": [
-      "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "FOREGROUND_SERVICE"
-    ]},
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "processing"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.example.trackcoach",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-location", "expo-task-manager"]
+    "plugins": [
+      "expo-location",
+      "expo-task-manager",
+      {
+        "isIosBackgroundLocationEnabled": true,
+        "isAndroidBackgroundLocationEnabled": true,
+        "locationAlwaysAndWhenInUsePermission": "Allow this app to access your location even when the app is in the background.",
+        "locationWhenInUsePermission": "Allow this app to access your location while you are using the app."
+      }
+    ]
   }
 }

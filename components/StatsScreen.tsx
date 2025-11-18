@@ -8,7 +8,7 @@ import {useTheme} from '../ThemeProvider';
 interface Coords {
     latitude: number;
     longitude: number;
-    accuracy?: number;
+    accuracy?: number | null; // allow null from Location API
     altitude?: number | null;
     heading?: number | null;
     speed?: number | null;
@@ -25,7 +25,6 @@ const StatsScreen: React.FC = () => {
     const [retryCount, setRetryCount] = useState(0);
     const MAX_RETRIES = 5;
     const [mapReady, setMapReady] = useState(false);
-    const [mapError, setMapError] = useState<string | null>(null);
     const [mapTimeout, setMapTimeout] = useState(false);
 
     const clearRetry = () => {
@@ -185,30 +184,24 @@ const StatsScreen: React.FC = () => {
                                 longitudeDelta: 0.005,
                             }}
                             onMapReady={() => setMapReady(true)}
-                            onError={(e) => setMapError(e.nativeEvent?.error || 'Map error')}
                             showsUserLocation={Platform.OS === 'android'}
                         >
                             <Marker
                                 coordinate={{latitude: coords.latitude, longitude: coords.longitude}}
                                 title="Aktuální poloha"
-                                description={`± ${coords.accuracy ? Math.round(coords.accuracy) + ' m' : '?'} `}
+                                description={`± ${coords.accuracy != null ? Math.round(coords.accuracy) + ' m' : '?'} `}
                             />
                         </MapView>
-                        {!mapReady && !mapError && !mapTimeout && (
+                        {!mapReady && !mapTimeout && (
                             <View
                                 style={[styles.mapOverlay, {backgroundColor: colors.surface + 'CC'}]}><ActivityIndicator
                                 size="small"/><Text style={[styles.mapOverlayText, {color: colors.text}]}>Inicializuji
                                 mapu…</Text></View>
                         )}
-                        {mapTimeout && !mapReady && !mapError && (
+                        {mapTimeout && !mapReady && (
                             <View style={[styles.mapOverlay, {backgroundColor: colors.surface}]}><Text
                                 style={[styles.mapOverlayText, {color: colors.text}]}>Mapa se nenačetla. Zkuste
                                 restartovat Expo / zkontrolovat react-native-maps.</Text></View>
-                        )}
-                        {mapError && (
-                            <View style={[styles.mapOverlay, {backgroundColor: colors.surface}]}><Text
-                                style={[styles.mapOverlayText, {color: colors.danger}]}>Chyba
-                                mapy: {mapError}</Text></View>
                         )}
                     </View>
                 )}

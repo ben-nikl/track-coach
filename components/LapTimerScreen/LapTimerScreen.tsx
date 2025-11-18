@@ -50,9 +50,9 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu}) => {
     const ToastOverlay = () => (
         <View pointerEvents="none" style={styles.toastContainer}>
             {toastMessages.map(t => (
-                <View key={t.id}
-                      style={[styles.toast, {backgroundColor: colors.surface, borderColor: colors.border}]}>\n <Text
-                    style={{color: colors.text, fontSize: 12, fontWeight: '600'}}>{t.text}</Text>\n </View>
+                <View key={t.id} style={[styles.toast, {backgroundColor: colors.surface, borderColor: colors.border}]}>
+                    <Text style={{color: colors.text, fontSize: 12, fontWeight: '600'}}>{t.text}</Text>
+                </View>
             ))}
         </View>
     );
@@ -77,64 +77,92 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu}) => {
 
     if (!trackData) {
         return (
-            <SafeAreaView style={[styles.portraitRoot, {
-                paddingTop: insets.top + 8,
-                paddingBottom: insets.bottom + 16
-            }]}>\n {header}\n <Text style={{color: colors.text, marginTop: 24}}>No active session.</Text>\n <Text
-                style={{color: colors.secondaryText, marginTop: 8}}>Start a session from track detail
-                screen.</Text>\n {permissionError && (<Text style={{
-                color: colors.danger,
-                textAlign: 'center',
-                marginTop: 4
-            }}>{permissionError}</Text>)}\n <ToastOverlay/>\n </SafeAreaView>
+            <SafeAreaView
+                style={[styles.portraitRoot, {paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16}]}>
+                {header}
+                <Text style={{color: colors.text, marginTop: 24}}>No active session.</Text>
+                <Text style={{color: colors.secondaryText, marginTop: 8}}>Start a session from track detail
+                    screen.</Text>
+                {permissionError && (
+                    <Text style={{color: colors.danger, textAlign: 'center', marginTop: 4}}>{permissionError}</Text>
+                )}
+                <ToastOverlay/>
+            </SafeAreaView>
         );
     }
 
     const landscapeUI = (
-        <SafeAreaView style={[styles.containerLandscape, {
-            paddingTop: insets.top + 8,
-            paddingBottom: insets.bottom + 16
-        }]}>\n <ToastOverlay/>\n {header}\n <View style={styles.landscapeRow}>\n <View
-            style={styles.landscapeLeft}>\n <LapTimeDisplay lastLapMs={lastLapMs ?? undefined}
-                                                            lastLapDeltaMs={undefined} lapNumber={lapNumber}/>\n <View
-            style={styles.spacer}/>\n <View style={styles.timersContainer}>\n <LapPanel title="Ghost Lap (PB)"
-                                                                                        center>\n <Text
-            style={[styles.panelMainTime, {color: colors.text}]}>{formatLapTime(ghostLapMs ?? NaN)}</Text>\n
-        </LapPanel>\n <LapPanel title="Best Lap" style={styles.bestLapLandscape}>\n <Text
-            style={[styles.panelMainTime, {color: colors.secondaryText}]}>{formatLapTime(bestLapMs ?? NaN)}</Text>\n
-        </LapPanel>\n </View>\n </View>\n <View style={styles.landscapeRight}>\n <View
-            style={styles.sectorsGrid}>\n {sectorBoxes.map(s => <SectorBox key={s.index} index={s.index} time={s.time}
-                                                                           active={s.active}/>)}\n </View>\n </View>\n
-        </View>\n {currentLapElapsedMs != null && (
-            <Text style={{color: colors.accent, textAlign: 'center', marginTop: 8}}>Current
-                Lap: {formatLapTime(currentLapElapsedMs)}</Text>)}\n {distancesPanel}\n {permissionError && (<Text
-            style={{color: colors.danger, textAlign: 'center', marginTop: 4}}>{permissionError}</Text>)}\n {endButton}\n
+        <SafeAreaView
+            style={[styles.containerLandscape, {paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16}]}>
+            <ToastOverlay/>
+            {header}
+            <View style={styles.landscapeRow}>
+                <View style={styles.landscapeLeft}>
+                    <LapTimeDisplay lastLapMs={lastLapMs ?? undefined} lastLapDeltaMs={undefined}
+                                    lapNumber={lapNumber}/>
+                    <View style={styles.spacer}/>
+                    <View style={styles.timersContainer}>
+                        <LapPanel title="Ghost Lap (PB)" center>
+                            <Text
+                                style={[styles.panelMainTime, {color: colors.text}]}>{formatLapTime(ghostLapMs ?? NaN)}</Text>
+                        </LapPanel>
+                        <LapPanel title="Best Lap" style={styles.bestLapLandscape}>
+                            <Text
+                                style={[styles.panelMainTime, {color: colors.secondaryText}]}>{formatLapTime(bestLapMs ?? NaN)}</Text>
+                        </LapPanel>
+                    </View>
+                </View>
+                <View style={styles.landscapeRight}>
+                    <View style={styles.sectorsGrid}>
+                        {sectorBoxes.map(s => (
+                            <SectorBox key={s.index} index={s.index} time={s.time} active={s.active}/>
+                        ))}
+                    </View>
+                </View>
+            </View>
+            {currentLapElapsedMs != null && (
+                <Text style={{color: colors.accent, textAlign: 'center', marginTop: 8}}>Current
+                    Lap: {formatLapTime(currentLapElapsedMs)}</Text>
+            )}
+            {distancesPanel}
+            {permissionError && (
+                <Text style={{color: colors.danger, textAlign: 'center', marginTop: 4}}>{permissionError}</Text>
+            )}
+            {endButton}
         </SafeAreaView>
     );
 
     const portraitUI = (
-        <SafeAreaView style={[styles.portraitRoot, {
-            paddingTop: insets.top + 8,
-            paddingBottom: insets.bottom + 16
-        }]}>\n {header}\n <LapPanel title="Ghost Lap (PB)"
-                                    style={[styles.ghostPortrait, styles.sectionStretch]}>\n <Text
-            style={[styles.panelMainTime, {color: colors.text}]}>{formatLapTime(ghostLapMs ?? NaN)}</Text>\n
-        </LapPanel>\n <View style={[styles.lastLapPortrait, styles.sectionStretch]}>\n <LapTimeDisplay
-            lastLapMs={lastLapMs ?? undefined} lastLapDeltaMs={undefined}
-            lapNumber={lapNumber}/>\n {currentLapElapsedMs != null && (<Text style={{
-            color: colors.accent,
-            marginTop: 8
-        }}>Current: {formatLapTime(currentLapElapsedMs)}</Text>)}\n {distancesPanel}\n </View>\n <View
-            style={styles.sectorsGridPortrait}>\n {sectorBoxes.map(s => <SectorBox key={s.index} index={s.index}
-                                                                                   time={s.time}
-                                                                                   active={s.active}/>)}\n </View>\n <LapPanel
-            title="Best Lap" style={[styles.bestLapPortrait, styles.sectionStretch]}>\n <Text
-            style={[styles.panelMainTime, {color: colors.secondaryText}]}>{formatLapTime(bestLapMs ?? NaN)}</Text>\n
-        </LapPanel>\n {permissionError && (<Text style={{
-            color: colors.danger,
-            textAlign: 'center',
-            marginTop: 4
-        }}>{permissionError}</Text>)}\n {endButton}\n <ToastOverlay/>\n </SafeAreaView>
+        <SafeAreaView style={[styles.portraitRoot, {paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16}]}>
+            {header}
+            <LapPanel title="Ghost Lap (PB)" style={[styles.ghostPortrait, styles.sectionStretch]}>
+                <Text style={[styles.panelMainTime, {color: colors.text}]}>{formatLapTime(ghostLapMs ?? NaN)}</Text>
+            </LapPanel>
+            <View style={[styles.lastLapPortrait, styles.sectionStretch]}>
+                <LapTimeDisplay lastLapMs={lastLapMs ?? undefined} lastLapDeltaMs={undefined} lapNumber={lapNumber}/>
+                {currentLapElapsedMs != null && (
+                    <Text style={{
+                        color: colors.accent,
+                        marginTop: 8
+                    }}>Current: {formatLapTime(currentLapElapsedMs)}</Text>
+                )}
+                {distancesPanel}
+            </View>
+            <View style={styles.sectorsGridPortrait}>
+                {sectorBoxes.map(s => (
+                    <SectorBox key={s.index} index={s.index} time={s.time} active={s.active}/>
+                ))}
+            </View>
+            <LapPanel title="Best Lap" style={[styles.bestLapPortrait, styles.sectionStretch]}>
+                <Text
+                    style={[styles.panelMainTime, {color: colors.secondaryText}]}>{formatLapTime(bestLapMs ?? NaN)}</Text>
+            </LapPanel>
+            {permissionError && (
+                <Text style={{color: colors.danger, textAlign: 'center', marginTop: 4}}>{permissionError}</Text>
+            )}
+            {endButton}
+            <ToastOverlay/>
+        </SafeAreaView>
     );
 
     return landscape ? landscapeUI : portraitUI;
