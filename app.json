@@ -17,30 +17,46 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "location",
+          "processing",
+          "location",
           "processing"
-        ]
-      }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.example.trackcoach"
     },
     "android": {
       "package": "com.example.trackcoach",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-location",
-      "expo-task-manager",
-      {
-        "isIosBackgroundLocationEnabled": true,
-        "isAndroidBackgroundLocationEnabled": true,
-        "locationAlwaysAndWhenInUsePermission": "Allow this app to access your location even when the app is in the background.",
-        "locationWhenInUsePermission": "Allow this app to access your location while you are using the app."
+      [
+        "expo-location",
+        {
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "Allow this app to access your location even when the app is in the background.",
+          "locationWhenInUsePermission": "Allow this app to access your location while you are using the app."
+        }
+      ],
+      "expo-task-manager"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "694c3c3c-c6ad-4d23-8e85-59207897a9df"
       }
-    ]
+    }
   }
 }
