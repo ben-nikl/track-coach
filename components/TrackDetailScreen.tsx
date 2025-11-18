@@ -4,6 +4,7 @@ import MapView, {MapViewProps, Marker, Polyline} from 'react-native-maps';
 import {useTheme} from '../ThemeProvider';
 import {Track} from '../data/tracks';
 import {computePerpendicularSegment} from '../helpers/generatePerpendicularSectors';
+import {useLapSession} from './LapSessionContext';
 
 export interface TrackDetail extends Track {
 }
@@ -16,6 +17,7 @@ interface TrackDetailScreenProps {
 
 const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onStartSession}) => {
     const {colors} = useTheme();
+    const {startSession} = useLapSession();
     const region: MapViewProps['region'] = {
         latitude: track.latitude,
         longitude: track.longitude,
@@ -25,7 +27,8 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
 
     const lineWidthM = 8;
     const startLine = computePerpendicularSegment(track.startLine.center, track.startLine.trackP1, track.startLine.trackP2, lineWidthM);
-    const finishLine = computePerpendicularSegment(track.finishLine.center, track.finishLine.trackP1, track.finishLine.trackP2, lineWidthM);
+    const finishSource = track.finishLine ?? track.startLine;
+    const finishLine = computePerpendicularSegment(finishSource.center, finishSource.trackP1, finishSource.trackP2, lineWidthM);
 
     const sectorLines = track.sectors.map((sector) => {
         const segment = computePerpendicularSegment(sector.center, sector.trackP1, sector.trackP2, lineWidthM);
@@ -73,7 +76,10 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
             <TouchableOpacity
                 style={[styles.startSessionButton, {backgroundColor: colors.primary}]}
                 activeOpacity={0.85}
-                onPress={() => onStartSession?.(track)}
+                onPress={() => {
+                    startSession(track);
+                    onStartSession?.(track);
+                }}
             >
                 <Text style={styles.startSessionText}>Start Session</Text>
             </TouchableOpacity>

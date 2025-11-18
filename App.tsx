@@ -8,14 +8,13 @@ import TrackListScreen from './components/TrackListScreen';
 import SettingsScreen from './components/SettingsScreen';
 import LapTimerScreen from './components/LapTimerScreen/LapTimerScreen';
 import {ThemeProvider, useTheme} from './ThemeProvider';
-import {Track} from './data/tracks';
 import SessionLogScreen from './components/SessionLogScreen';
-import {LapSessionProvider} from './components/LapSessionContext';
+import {LapSessionProvider, useLapSession} from './components/LapSessionContext';
 
 const AppContent: React.FC = () => {
     const [selected, setSelected] = useState('home');
-    const [lapTrack, setLapTrack] = useState<Track | null>(null);
     const {colors, mode} = useTheme();
+    const {trackData} = useLapSession();
     const items = [
         {id: 'home', label: 'Home'},
         {id: 'lap', label: 'Lap'},
@@ -30,8 +29,7 @@ const AppContent: React.FC = () => {
                 {selected === 'stats' ? (
                     <StatsScreen/>
                 ) : selected === 'tracks' ? (
-                    <TrackListScreen onStartSession={(track) => {
-                        setLapTrack(track);
+                    <TrackListScreen onStartSession={() => {
                         setSelected('lap');
                     }}/>
                 ) : selected === 'sessions' ? (
@@ -39,7 +37,7 @@ const AppContent: React.FC = () => {
                 ) : selected === 'settings' ? (
                     <SettingsScreen/>
                 ) : selected === 'lap' ? (
-                    <LapTimerScreen trackData={lapTrack} onBack={() => setSelected('tracks')}/>
+                    <LapTimerScreen onBack={() => setSelected('tracks')}/>
                 ) : (
                     <View style={styles.center}>
                         <Text style={[styles.title, {color: colors.text}]}>{selected.toUpperCase()}</Text>
