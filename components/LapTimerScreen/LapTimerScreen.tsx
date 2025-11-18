@@ -11,9 +11,10 @@ import {useLapSession} from '../LapSessionContext';
 export interface LapTimerScreenProps {
     onBack?: () => void;
     onMenu?: () => void;
+    onShowTrackDetail?: () => void;
 }
 
-const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu}) => {
+const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTrackDetail}) => {
     const {colors} = useTheme();
     const insets = useSafeAreaInsets();
     const {width, height} = useWindowDimensions();
@@ -59,7 +60,7 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu}) => {
 
     const header = (
         <View style={styles.headerRow}>
-            <Pressable accessibilityRole="button" onPress={onBack} style={styles.headerBtn}><Text
+            <Pressable accessibilityRole="button" onPress={onShowTrackDetail ?? onBack} style={styles.headerBtn}><Text
                 style={[styles.headerBtnText, {color: colors.text}]}>◄</Text></Pressable>
             <Text style={[styles.trackTitle, {color: colors.text}]}
                   numberOfLines={1}>{trackData ? trackData.name : 'No Track'}</Text>

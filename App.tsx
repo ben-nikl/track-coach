@@ -36,7 +36,10 @@ const AppContent: React.FC = () => {
                 ) : selected === 'settings' ? (
                     <SettingsScreen/>
                 ) : selected === 'lap' ? (
-                    <LapTimerScreen onBack={() => setSelected('tracks')}/>
+                    <LapTimerScreen
+                        onBack={() => setSelected('tracks')}
+                        onShowTrackDetail={() => setSelected('tracks')}
+                    />
                 ) : (
                     <View style={styles.center}>
                         <Text style={[styles.title, {color: colors.text}]}>{selected.toUpperCase()}</Text>

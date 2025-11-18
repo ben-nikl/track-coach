@@ -17,7 +17,7 @@ interface TrackDetailScreenProps {
 
 const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onStartSession}) => {
     const {colors} = useTheme();
-    const {startSession} = useLapSession();
+    const {startSession, endSession, sessionActive, trackData} = useLapSession();
     const region: MapViewProps['region'] = {
         latitude: track.latitude,
         longitude: track.longitude,
@@ -35,7 +35,7 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
         return {id: sector.id, start: segment.start, end: segment.end};
     });
 
-    console.log(sectorLines)
+    const isActiveTrack = sessionActive && trackData?.id === track.id;
 
     const renderStartFinishLines = () => (
         <>
@@ -49,6 +49,15 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
             <Polyline coordinates={[finishLine.start, finishLine.end]} strokeWidth={4} strokeColor={colors.warning}/>
         </>
     );
+
+    const handleSessionButtonPress = () => {
+        if (isActiveTrack) {
+            endSession();
+        } else {
+            startSession(track);
+            onStartSession?.(track);
+        }
+    };
 
     return (
         <View style={[styles.container, {backgroundColor: colors.background}]}>
@@ -74,14 +83,13 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
                 ))}
             </MapView>
             <TouchableOpacity
-                style={[styles.startSessionButton, {backgroundColor: colors.primary}]}
+                style={[styles.startSessionButton, {backgroundColor: isActiveTrack ? colors.danger : colors.primary}]}
                 activeOpacity={0.85}
-                onPress={() => {
-                    startSession(track);
-                    onStartSession?.(track);
-                }}
+                onPress={handleSessionButtonPress}
             >
-                <Text style={styles.startSessionText}>Start Session</Text>
+                <Text style={styles.startSessionText}>
+                    {isActiveTrack ? 'End Session' : 'Start Session'}
+                </Text>
             </TouchableOpacity>
         </View>
     );
