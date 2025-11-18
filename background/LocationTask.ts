@@ -39,7 +39,7 @@ export async function ensureBackgroundUpdates() {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
             accuracy: Location.Accuracy.BestForNavigation,
             distanceInterval: 0,
-            timeInterval: 0,
+            timeInterval: 1000, // 1Hz anchor instead of continuous
             // iOS only indicator
             showsBackgroundLocationIndicator: true,
             // Android foreground service notification
