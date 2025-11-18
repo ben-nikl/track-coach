@@ -19,7 +19,7 @@ export interface Track {
     longitudeDelta: number;
     sectors: TrackSector[]; // ordered list of timing sectors
     startLine: TrackSector; // explicit start timing line definition
-    finishLine: TrackSector; // explicit finish timing line definition
+    finishLine?: TrackSector; // optional finish; if omitted, start==finish
 }
 
 // NOTE: All sector coordinates are placeholders; replace with precise GPS track geometry.
@@ -54,12 +54,7 @@ export const TRACKS: Track[] = [
             trackP1: {latitude: 49.870859, longitude: 13.998167},
             trackP2: {latitude: 49.871033, longitude: 13.998240}
         },
-        finishLine: {
-            id: 'finish',
-            center: {latitude: 49.871018, longitude: 13.998206},
-            trackP1: {latitude: 49.870859, longitude: 13.998167},
-            trackP2: {latitude: 49.871033, longitude: 13.998240}
-        },
+        // finishLine omitted => identical to startLine
     },
     {
         id: 'most',
