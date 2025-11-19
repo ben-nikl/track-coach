@@ -35,6 +35,15 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
         sessionActive,
     } = useLapSession();
 
+    // Handler for back button - returns to track detail if session active, otherwise calls onBack
+    const handleBackPress = () => {
+        if (sessionActive && trackData && onShowTrackDetail) {
+            onShowTrackDetail();
+        } else if (onBack) {
+            onBack();
+        }
+    };
+
     const distancesPanel = lineDistances.length > 0 && (
         <LapPanel title="Distances" style={{marginTop: 8}}>
             <View style={{flexDirection: 'row', flexWrap: 'wrap', rowGap: 4, columnGap: 12}}>
@@ -60,8 +69,9 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
 
     const header = (
         <View style={styles.headerRow}>
-            <Pressable accessibilityRole="button" onPress={onShowTrackDetail ?? onBack} style={styles.headerBtn}><Text
-                style={[styles.headerBtnText, {color: colors.text}]}>◄</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={handleBackPress} style={styles.headerBtn}>
+                <Text style={[styles.headerBtnText, {color: colors.text}]}>◄</Text>
+            </Pressable>
             <Text style={[styles.trackTitle, {color: colors.text}]}
                   numberOfLines={1}>{trackData ? trackData.name : 'No Track'}</Text>
             <Pressable accessibilityRole="button" onPress={onMenu} style={styles.headerBtn}><Text

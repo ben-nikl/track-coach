@@ -1,5 +1,5 @@
-import React from 'react';
-import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import React, {useState} from 'react';
+import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import MapView, {MapViewProps, Marker, Polyline} from 'react-native-maps';
 import {useTheme} from '../ThemeProvider';
 import {Track} from '../data/tracks';
@@ -17,7 +17,18 @@ interface TrackDetailScreenProps {
 
 const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onStartSession}) => {
     const {colors} = useTheme();
-    const {startSession, endSession, sessionActive, trackData} = useLapSession();
+    const {
+        startSession,
+        endSession,
+        sessionActive,
+        trackData,
+        laps,
+        selectedLapIndex,
+        setSelectedLapIndex,
+        getTrajectoryForLap
+    } = useLapSession();
+    const [showTrajectory, setShowTrajectory] = useState(false);
+
     const region: MapViewProps['region'] = {
         latitude: track.latitude,
         longitude: track.longitude,
@@ -36,6 +47,9 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
     });
 
     const isActiveTrack = sessionActive && trackData?.id === track.id;
+
+    // Get trajectory for selected lap
+    const trajectoryPoints = selectedLapIndex !== null ? getTrajectoryForLap(selectedLapIndex) : undefined;
 
     const renderStartFinishLines = () => (
         <>
@@ -71,7 +85,8 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
                 <Text style={[styles.title, {color: colors.text}]} numberOfLines={1}>{track.name}</Text>
             </View>
             <Text style={[styles.subtitle, {color: colors.secondaryText}]}>{track.location}</Text>
-            <MapView style={styles.map} region={region} showsUserLocation={false}>
+
+            <MapView style={styles.map} region={region} showsUserLocation={isActiveTrack}>
                 {renderStartFinishLines()}
                 {sectorLines.map(line => (
                     <Polyline
@@ -81,7 +96,50 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
                         strokeColor={colors.accent}
                     />
                 ))}
+                {showTrajectory && trajectoryPoints && trajectoryPoints.length > 0 && (
+                    <Polyline
+                        coordinates={trajectoryPoints.map(p => ({latitude: p.latitude, longitude: p.longitude}))}
+                        strokeWidth={3}
+                        strokeColor={colors.primary}
+                        lineDashPattern={[1]}
+                    />
+                )}
             </MapView>
+
+            {/* Lap selector */}
+            {laps.length > 0 && (
+                <View style={styles.lapSelectorContainer}>
+                    <Text style={[styles.lapSelectorTitle, {color: colors.text}]}>View Lap Trajectory:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.lapScroller}>
+                        {laps.map((lap, idx) => (
+                            <TouchableOpacity
+                                key={lap.lapIndex}
+                                onPress={() => {
+                                    const newIndex = selectedLapIndex === lap.lapIndex ? null : lap.lapIndex;
+                                    setSelectedLapIndex(newIndex);
+                                    setShowTrajectory(newIndex !== null);
+                                }}
+                                style={[
+                                    styles.lapButton,
+                                    {
+                                        backgroundColor: selectedLapIndex === lap.lapIndex ? colors.primary : colors.surface,
+                                        borderColor: colors.border
+                                    }
+                                ]}
+                            >
+                                <Text style={{
+                                    color: selectedLapIndex === lap.lapIndex ? colors.white : colors.text,
+                                    fontSize: 12,
+                                    fontWeight: '600'
+                                }}>
+                                    Lap {lap.lapIndex}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            )}
+
             <TouchableOpacity
                 style={[styles.startSessionButton, {backgroundColor: isActiveTrack ? colors.danger : colors.primary}]}
                 activeOpacity={0.85}
@@ -116,6 +174,25 @@ const styles = StyleSheet.create({
         justifyContent: 'center'
     },
     startSessionText: {fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 0.5},
+    lapSelectorContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    lapSelectorTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    lapScroller: {
+        flexDirection: 'row',
+    },
+    lapButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        marginRight: 8,
+        borderWidth: 1,
+    },
 });
 
 export default TrackDetailScreen;

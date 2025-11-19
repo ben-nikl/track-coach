@@ -3,7 +3,6 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Track} from '../data/tracks';
 import {computePerpendicularSegment} from '../helpers/generatePerpendicularSectors';
-import {distancePointToSegmentMeters, intersectionParamT, segmentsIntersect} from '../helpers/geo';
 import {formatLapTime} from './LapTimerScreen/format';
 import {
     attachLocationSubscriber,
@@ -12,209 +11,30 @@ import {
     stopBackgroundUpdates
 } from '../background/LocationTask';
 import {FusedSample, highFrequencyLocationManager} from '../background/HighFrequencyLocationManager';
-
-export type LapEventType = 'start' | 'sector' | 'finish';
-
-export interface LapEvent {
-    id: string;
-    type: LapEventType;
-    lapIndex: number;
-    sectorIndex?: number;
-    timestampMs: number;
-    wallClockISO: string;
-    lapElapsedMs?: number;
-    splitMs?: number;
-}
-
-export interface LapRecord {
-    lapIndex: number;
-    lapTimeMs: number;
-    sectorSplitsMs: number[];
-}
-
-interface SectorTimingState {
-    id: string;
-    timeMs?: number
-}
-
-interface ToastMsg {
-    id: string;
-    text: string
-}
-
-// Helper types
-interface Point {
-    latitude: number;
-    longitude: number;
-}
-
-interface LineSegment {
-    start: Point;
-    end: Point;
-}
-
-interface DistanceResult {
-    id: string;
-    label: string;
-    distance: number;
-}
-
-// Helper functions
-function calculateCrossingTime(tPrev: number, tCur: number, p1: Point, p2: Point, lineStart: Point, lineEnd: Point): number | null {
-    if (!segmentsIntersect(p1, p2, lineStart, lineEnd)) return null;
-    const tParam = intersectionParamT(p1, p2, lineStart, lineEnd) ?? 0;
-    return Math.round(tPrev + tParam * (tCur - tPrev));
-}
-
-function computeLineDistances(
-    currentPoint: Point,
-    trackData: Track,
-    startSegment: LineSegment,
-    finishSegment: LineSegment,
-    sectorSegments: { id: string; seg: LineSegment }[],
-    isSameStartFinish: boolean
-): DistanceResult[] {
-    const distances: DistanceResult[] = [];
-
-    const startDist = distancePointToSegmentMeters(currentPoint, startSegment.start, startSegment.end);
-    distances.push({
-        id: trackData.startLine.id,
-        label: isSameStartFinish ? 'START/FINISH' : 'START',
-        distance: startDist
-    });
-
-    sectorSegments.forEach(sec => {
-        const d = distancePointToSegmentMeters(currentPoint, sec.seg.start, sec.seg.end);
-        distances.push({id: sec.id, label: sec.id.toUpperCase(), distance: d});
-    });
-
-    if (!isSameStartFinish) {
-        const finishDist = distancePointToSegmentMeters(currentPoint, finishSegment.start, finishSegment.end);
-        const finishId = trackData.finishLine ? trackData.finishLine.id : trackData.startLine.id;
-        distances.push({id: finishId, label: 'FINISH', distance: finishDist});
-    }
-
-    return distances;
-}
-
-function updateLineArmingStates(
-    currentPoint: Point,
-    startSegment: LineSegment,
-    finishSegment: LineSegment,
-    sectorSegments: { id: string; seg: LineSegment }[],
-    isSameStartFinish: boolean,
-    startArmedRef: { current: boolean },
-    finishArmedRef: { current: boolean },
-    segmentArmedRef: { current: Record<string, boolean> },
-    rearmDistance: number
-) {
-    const startDist = distancePointToSegmentMeters(currentPoint, startSegment.start, startSegment.end);
-    if (!startArmedRef.current && startDist >= rearmDistance) {
-        startArmedRef.current = true;
-    }
-
-    sectorSegments.forEach(sec => {
-        const d = distancePointToSegmentMeters(currentPoint, sec.seg.start, sec.seg.end);
-        if (!segmentArmedRef.current[sec.id] && d >= rearmDistance) {
-            segmentArmedRef.current[sec.id] = true;
-        }
-    });
-
-    if (!isSameStartFinish) {
-        const finishDist = distancePointToSegmentMeters(currentPoint, finishSegment.start, finishSegment.end);
-        if (!finishArmedRef.current && finishDist >= rearmDistance) {
-            finishArmedRef.current = true;
-        }
-    } else if (!finishArmedRef.current && startDist >= rearmDistance) {
-        finishArmedRef.current = true;
-    }
-}
-
-function checkStartLineCrossing(
-    p1: Point,
-    p2: Point,
-    tPrev: number,
-    tCur: number,
-    startSegment: LineSegment,
-    isSameStartFinish: boolean,
-    startArmedRef: { current: boolean },
-    finishArmedRef: { current: boolean },
-    lastStartCrossRef: { current: number },
-    startLapCallback: ((t: number) => void) | null,
-    debounceMs: number
-): boolean {
-    if (!startArmedRef.current) return false;
-
-    const crossingMs = calculateCrossingTime(tPrev, tCur, p1, p2, startSegment.start, startSegment.end);
-    if (crossingMs === null) return false;
-
-    if (crossingMs - lastStartCrossRef.current > debounceMs) {
-        lastStartCrossRef.current = crossingMs;
-        startArmedRef.current = false;
-        startLapCallback?.(crossingMs);
-        if (isSameStartFinish) finishArmedRef.current = false;
-        return true;
-    }
-    return false;
-}
-
-function checkFinishLineCrossing(
-    p1: Point,
-    p2: Point,
-    tPrev: number,
-    tCur: number,
-    finishSegment: LineSegment,
-    finishArmedRef: { current: boolean },
-    lastFinishCrossRef: { current: number },
-    finishLapCallback: ((t: number) => void) | null,
-    debounceMs: number
-): boolean {
-    if (!finishArmedRef.current) return false;
-
-    const crossingMs = calculateCrossingTime(tPrev, tCur, p1, p2, finishSegment.start, finishSegment.end);
-    if (crossingMs === null) return false;
-
-    if (crossingMs - lastFinishCrossRef.current > debounceMs) {
-        lastFinishCrossRef.current = crossingMs;
-        finishArmedRef.current = false;
-        finishLapCallback?.(crossingMs);
-        return true;
-    }
-    return false;
-}
-
-function checkSectorCrossings(
-    p1: Point,
-    p2: Point,
-    tPrev: number,
-    tCur: number,
-    sectorSegments: { id: string; seg: LineSegment }[],
-    segmentArmedRef: { current: Record<string, boolean> },
-    lastSectorCrossTimesRef: { current: Record<string, number> },
-    markSectorCallback: ((id: string, t: number) => void) | null,
-    debounceMs: number
-) {
-    sectorSegments.forEach(sec => {
-        if (!segmentArmedRef.current[sec.id]) return;
-
-        const crossingMs = calculateCrossingTime(tPrev, tCur, p1, p2, sec.seg.start, sec.seg.end);
-        if (crossingMs === null) return;
-
-        const last = lastSectorCrossTimesRef.current[sec.id] || 0;
-        if (crossingMs - last > debounceMs) {
-            lastSectorCrossTimesRef.current[sec.id] = crossingMs;
-            segmentArmedRef.current[sec.id] = false;
-            markSectorCallback?.(sec.id, crossingMs);
-        }
-    });
-}
-
-const LINE_HALF_WIDTH_M = 12;
-const REQUIRED_ACCURACY_M = 15;
-const START_DEBOUNCE_MS = 1200;
-const SEGMENT_DEBOUNCE_MS = 800;
-const FINISH_DEBOUNCE_MS = 800;
-const LINE_REARM_DISTANCE_M = 6;
+import {
+    checkFinishLineCrossing,
+    checkSectorCrossings,
+    checkStartLineCrossing,
+    computeLineDistances,
+    LineSegment,
+    Point,
+    updateLineArmingStates
+} from '../helpers/lineCrossing';
+import {
+    FINISH_DEBOUNCE_MS,
+    LapEvent,
+    LapRecord,
+    LINE_HALF_WIDTH_M,
+    LINE_REARM_DISTANCE_M,
+    REQUIRED_ACCURACY_M,
+    SectorBox,
+    SectorTimingState,
+    SEGMENT_DEBOUNCE_MS,
+    START_DEBOUNCE_MS,
+    ToastMsg,
+    TrajectoryPoint
+} from '../helpers/lapSessionTypes';
+import {TrajectoryManager} from '../helpers/trajectoryManager';
 
 interface LapSessionContextValue {
     events: LapEvent[];
@@ -237,10 +57,13 @@ interface LapSessionContextValue {
     toastMessages: ToastMsg[];
     currentLapElapsedMs: number | null;
     lapNumber: number;
-    sectorBoxes: { index: number; time?: number; active: boolean }[];
+    sectorBoxes: SectorBox[];
     ghostLapMs?: number;
-    lastFusedSample: FusedSample | null; // latest fused sample (high frequency)
-    fusedSpeedMps: number | null; // derived fused speed
+    lastFusedSample: FusedSample | null;
+    fusedSpeedMps: number | null;
+    selectedLapIndex: number | null;
+    setSelectedLapIndex: (index: number | null) => void;
+    getTrajectoryForLap: (lapIndex: number) => TrajectoryPoint[] | undefined;
 }
 
 const LapSessionContext = createContext<LapSessionContextValue | undefined>(undefined);
@@ -263,9 +86,13 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     const [permissionError, setPermissionError] = useState<string | null>(null);
     const [lineDistances, setLineDistances] = useState<{ id: string; label: string; distance: number }[]>([]);
     const [toastMessages, setToastMessages] = useState<ToastMsg[]>([]);
-    // High-frequency fused state
     const [lastFusedSample, setLastFusedSample] = useState<FusedSample | null>(null);
     const [fusedSpeedMps, setFusedSpeedMps] = useState<number | null>(null);
+    const [selectedLapIndex, setSelectedLapIndex] = useState<number | null>(null);
+
+    // Trajectory manager
+    const trajectoryManagerRef = useRef(new TrajectoryManager());
+
     const fusedThrottleRef = useRef<number>(0);
     const lastFusedSampleRef = useRef<FusedSample | null>(null);
 
@@ -279,22 +106,25 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     const prevSectorCrossMsRef = useRef<number | null>(null);
     const lastStartCrossRef = useRef(0);
     const lastFinishCrossRef = useRef(0);
-    const crossingLockRef = useRef(false); // prevents recursive crossing handling
+    const crossingLockRef = useRef(false);
 
     // geometry caches
-    const startFinishSegmentsRef = useRef<{ start: any; finish: any } | null>(null);
-    const sectorSegmentsRef = useRef<{ id: string; seg: any }[]>([]);
+    const startFinishSegmentsRef = useRef<{ start: LineSegment; finish: LineSegment } | null>(null);
+    const sectorSegmentsRef = useRef<{ id: string; seg: LineSegment }[]>([]);
     const sectorBoundaryLinesRef = useRef(trackData ? trackData.sectors : []);
     const isSameStartFinishRef = useRef(false);
     const sectorsTimingRef = useRef<SectorTimingState[]>([]);
+
     useEffect(() => {
         sectorsTimingRef.current = sectorsTiming;
     }, [sectorsTiming]);
+
     const markSectorCrossingRef = useRef<((id: string, t: number) => void) | null>(null);
     const finishLapRef = useRef<((t: number) => void) | null>(null);
     const trackDataRef = useRef<Track | null>(null);
     const sessionActiveRef = useRef<boolean>(false);
     const currentLapStartMsRef = useRef<number | null>(null);
+
     // sync refs with state
     useEffect(() => {
         trackDataRef.current = trackData;
@@ -305,6 +135,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     useEffect(() => {
         currentLapStartMsRef.current = currentLapStartMs;
     }, [currentLapStartMs]);
+
     const startLapRef = useRef<((t: number) => void) | null>(null);
     const fusedSubscribeCallbackRef = useRef<((s: FusedSample) => void) | null>(null);
 
@@ -313,6 +144,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         setToastMessages(m => [...m, {id, text}]);
         setTimeout(() => setToastMessages(m => m.filter(t => t.id !== id)), 2200);
     }, []);
+
     const defer = (fn: () => void) => setTimeout(fn, 0);
 
     const logStart = useCallback((timestampMs: number) => {
@@ -327,6 +159,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             lapElapsedMs: 0
         }]);
     }, [currentLapIndex]);
+
     const logSector = useCallback((timestampMs: number, lapElapsedMs: number, splitMs: number, sectorIndex: number) => {
         setEvents(p => [...p, {
             id: Math.random().toString(36).slice(2),
@@ -339,6 +172,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             splitMs
         }]);
     }, [currentLapIndex]);
+
     const logFinish = useCallback((timestampMs: number, lapElapsedMs: number, lapTimeMs: number, finalSplitMs: number, sectorSplitsMs: number[]) => {
         setEvents(p => [...p, {
             id: Math.random().toString(36).slice(2),
@@ -349,8 +183,13 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             lapElapsedMs,
             splitMs: finalSplitMs
         }]);
-        setLaps(p => [...p, {lapIndex: currentLapIndex, lapTimeMs, sectorSplitsMs}]);
+
+        // Store trajectory with lap record
+        const trajectoryPoints = trajectoryManagerRef.current.finishLap(currentLapIndex);
+
+        setLaps(p => [...p, {lapIndex: currentLapIndex, lapTimeMs, sectorSplitsMs, trajectoryPoints}]);
     }, [currentLapIndex]);
+
     const resetSession = useCallback(() => {
         setEvents([]);
         setLaps([]);
@@ -361,6 +200,8 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         setBestLapMs(null);
         setSectorsTiming([]);
         prevSectorCrossMsRef.current = null;
+        trajectoryManagerRef.current.clearAll();
+        setSelectedLapIndex(null);
         toastMessages.length && setToastMessages([]);
     }, [toastMessages.length]);
 
@@ -425,18 +266,22 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             return [...prev, {id: sectorId, timeMs: split}];
         });
     }, [currentLapStartMs, logSector, addToast]);
+
     useEffect(() => {
         markSectorCrossingRef.current = markSectorCrossing;
     }, [markSectorCrossing]);
+
     const startLap = useCallback((startTimeMs: number) => {
         setCurrentLapStartMs(startTimeMs);
         setSectorsTiming([]);
         prevSectorCrossMsRef.current = startTimeMs;
         setNowMs(Date.now());
         sectorSegmentsRef.current.forEach(sec => segmentArmedRef.current[sec.id] = true);
+        trajectoryManagerRef.current.clearCurrentLap();
         addToast('Lap started');
         defer(() => logStart(startTimeMs));
     }, [logStart, addToast]);
+
     const finishLap = useCallback((finishTimeMs: number) => {
         if (crossingLockRef.current) return;
         crossingLockRef.current = true;
@@ -447,10 +292,11 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         const lastBoundary = prevSectorCrossMsRef.current ?? currentLapStartMs;
         const finalSplit = finishTimeMs - lastBoundary;
         const lapDuration = finishTimeMs - currentLapStartMs;
-        const sectorSplitsMs = [...sectorsTimingRef.current.map(s => s.timeMs || 0), finalSplit];
-        const lapElapsed = finishTimeMs - currentLapStartMs;
+        const sectorSplitsMs = sectorsTiming.map(s => s.timeMs ?? 0);
+
         addToast(`Lap finished: ${formatLapTime(lapDuration)}`);
-        defer(() => logFinish(finishTimeMs, lapElapsed, lapDuration, finalSplit, sectorSplitsMs));
+        defer(() => logFinish(finishTimeMs, finishTimeMs - currentLapStartMs, lapDuration, finalSplit, sectorSplitsMs));
+
         setSectorsTiming(prev => {
             const expected = sectorBoundaryLinesRef.current.length + 1;
             if (prev.length < expected) {
@@ -459,14 +305,17 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             }
             return prev;
         });
+
         setLapTimes(prev => {
             const updated = [...prev, lapDuration];
             if (trackData) AsyncStorage.setItem(`laps:${trackData.id}`, JSON.stringify(updated)).catch(() => {
             });
             return updated;
         });
+
         setLastLapMs(lapDuration);
         setBestLapMs(prev => prev == null || lapDuration < prev ? lapDuration : prev);
+
         if (isSameStartFinishRef.current) {
             setTimeout(() => {
                 startLap(finishTimeMs);
@@ -481,10 +330,12 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             prevSectorCrossMsRef.current = null;
             crossingLockRef.current = false;
         }
-    }, [currentLapStartMs, trackData, logFinish, addToast, startLap]);
+    }, [currentLapStartMs, trackData, logFinish, addToast, startLap, sectorsTiming]);
+
     useEffect(() => {
         finishLapRef.current = finishLap;
     }, [finishLap]);
+
     useEffect(() => {
         startLapRef.current = startLap;
     }, [startLap]);
@@ -499,39 +350,32 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         if (!segs) return;
         const {start, finish} = segs;
         const p2 = {latitude: loc.coords.latitude, longitude: loc.coords.longitude};
+
         try {
             const sameLine = isSameStartFinishRef.current;
-            const distances: { id: string; label: string; distance: number }[] = [];
-            const startDist = distancePointToSegmentMeters(p2, start.start, start.end);
-            distances.push({
-                id: trackData.startLine.id,
-                label: sameLine ? 'START/FINISH' : 'START',
-                distance: startDist
-            });
-            sectorSegmentsRef.current.forEach(sec => {
-                const d = distancePointToSegmentMeters(p2, sec.seg.start, sec.seg.end);
-                distances.push({id: sec.id, label: sec.id.toUpperCase(), distance: d});
-            });
-            if (!sameLine) {
-                const finishDist = distancePointToSegmentMeters(p2, finish.start, finish.end);
-                const finishId = trackData.finishLine ? trackData.finishLine.id : trackData.startLine.id;
-                distances.push({id: finishId, label: 'FINISH', distance: finishDist});
-            }
+            const startLineId = trackData.startLine.id;
+            const finishLineId = trackData.finishLine ? trackData.finishLine.id : trackData.startLine.id;
+
+            const distances = computeLineDistances(
+                p2,
+                start,
+                finish,
+                sectorSegmentsRef.current,
+                sameLine,
+                startLineId,
+                finishLineId
+            );
             setLineDistances(distances);
         } catch {
         }
-        // fallback crossing only if no fused data yet
-        if (!lastFusedSampleRef.current && prev) {
-            processFusedLike(prev.timestamp, prev.coords.latitude, prev.coords.longitude, loc.timestamp, loc.coords.latitude, loc.coords.longitude);
-        }
     }, [trackData]);
 
-    // Replace processFusedLike useCallback with stable function using refs to avoid dependency churn
+    // Process fused location data for crossing detection
     const processFusedLike = (tPrev: number, latPrev: number, lonPrev: number, tCur: number, latCur: number, lonCur: number) => {
         if (crossingLockRef.current) return;
 
         const segs = startFinishSegmentsRef.current;
-        const td = trackDataRef.current || trackData;
+        const td = trackDataRef.current ?? trackData;
         if (!segs || !td) return;
 
         const {start, finish} = segs;
@@ -553,13 +397,17 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             );
 
             // Compute and update distances
+            const startLineId = td.startLine.id;
+            const finishLineId = td.finishLine ? td.finishLine.id : td.startLine.id;
+
             const distances = computeLineDistances(
                 p2,
-                td,
                 start,
                 finish,
                 sectorSegmentsRef.current,
-                isSameStartFinishRef.current
+                isSameStartFinishRef.current,
+                startLineId,
+                finishLineId
             );
             setLineDistances(distances);
         } catch {
@@ -619,10 +467,25 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     fusedSampleHandlerRef.current = (sample: FusedSample) => {
         const td = trackDataRef.current;
         if (!td || sample.source !== 'fused') return;
+
         const prev = prevFusedRef.current;
         prevFusedRef.current = sample;
+
         if (prev) processFusedLike(prev.timestamp, prev.latitude, prev.longitude, sample.timestamp, sample.latitude, sample.longitude);
+
         lastFusedSampleRef.current = sample;
+
+        // Record trajectory point during active lap
+        if (currentLapStartMsRef.current != null && sessionActiveRef.current) {
+            trajectoryManagerRef.current.addPoint({
+                latitude: sample.latitude,
+                longitude: sample.longitude,
+                timestamp: sample.timestamp,
+                speed: sample.speedMps,
+                accuracy: sample.accuracy
+            });
+        }
+
         const now = sample.timestamp;
         if (now - fusedThrottleRef.current > 50) {
             fusedThrottleRef.current = now;
@@ -734,6 +597,8 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         lastSectorCrossTimesRef.current = {};
         lastStartCrossRef.current = 0;
         lastFinishCrossRef.current = 0;
+        trajectoryManagerRef.current.clearAll();
+        setSelectedLapIndex(null);
         addToast('Session started');
     }, [addToast]);
 
@@ -742,8 +607,13 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         stopBackgroundUpdates();
         detachLocationSubscriber();
         highFrequencyLocationManager.stop();
+        trajectoryManagerRef.current.clearCurrentLap();
         addToast('Session ended');
     }, [addToast]);
+
+    const getTrajectoryForLap = useCallback((lapIndex: number) => {
+        return trajectoryManagerRef.current.getTrajectory(lapIndex);
+    }, []);
 
     return <LapSessionContext.Provider value={{
         events,
@@ -769,7 +639,10 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         sectorBoxes,
         ghostLapMs,
         lastFusedSample,
-        fusedSpeedMps
+        fusedSpeedMps,
+        selectedLapIndex,
+        setSelectedLapIndex,
+        getTrajectoryForLap
     }}>{children}</LapSessionContext.Provider>;
 };
 
