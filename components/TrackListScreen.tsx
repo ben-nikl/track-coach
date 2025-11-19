@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
-import {FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
+import {FlatList, StyleSheet, Text, TextInput, TouchableOpacity} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import TrackListItem from './TrackListScreen/TrackListItem';
 import {useTheme} from '../ThemeProvider';
 import TrackDetailScreen from './TrackDetailScreen';
@@ -34,7 +35,7 @@ const TrackListScreen: React.FC<TrackListScreenProps> = ({onStartSession}) => {
     }
 
     return (
-        <View style={[styles.container, {backgroundColor: colors.background}]}>
+        <SafeAreaView style={[styles.container, {backgroundColor: colors.background}]}>
             <Text style={[styles.header, {color: colors.text}]}>Select a Track</Text>
             <TextInput
                 style={[styles.search, {
@@ -50,13 +51,15 @@ const TrackListScreen: React.FC<TrackListScreenProps> = ({onStartSession}) => {
             <FlatList
                 data={filteredTracks}
                 keyExtractor={item => item.id}
-                renderItem={({item}) => <TrackListItem item={item} onPressTrack={setSelectedTrack}/>}
-                contentContainerStyle={{paddingBottom: 80, paddingHorizontal: 16}}
+                renderItem={({item}) => (
+                    <TrackListItem track={item} onPress={() => setSelectedTrack(item)}/>
+                )}
+                contentContainerStyle={styles.listContent}
             />
             <TouchableOpacity style={[styles.fab, {backgroundColor: colors.primary, shadowColor: colors.fabShadow}]}>
                 <Text style={[styles.fabText, {color: colors.white}]}>+</Text>
             </TouchableOpacity>
-        </View>
+        </SafeAreaView>
     );
 };
 

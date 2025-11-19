@@ -1,5 +1,6 @@
 import React, {useState} from 'react';
 import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import MapView, {MapViewProps, Marker, Polyline} from 'react-native-maps';
 import {useTheme} from '../ThemeProvider';
 import {Track} from '../data/tracks';
@@ -74,7 +75,7 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
     };
 
     return (
-        <View style={[styles.container, {backgroundColor: colors.background}]}>
+        <SafeAreaView style={[styles.container, {backgroundColor: colors.background}]}>
             <View style={styles.headerRow}>
                 <TouchableOpacity onPress={onBack} style={[styles.backButton, {
                     backgroundColor: colors.surface,
@@ -149,12 +150,12 @@ const TrackDetailScreen: React.FC<TrackDetailScreenProps> = ({track, onBack, onS
                     {isActiveTrack ? 'End Session' : 'Start Session'}
                 </Text>
             </TouchableOpacity>
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {flex: 1, width: '100%', paddingTop: 32},
+    container: {flex: 1, width: '100%'},
     headerRow: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16},
     backButton: {paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, marginRight: 12},
     title: {fontSize: 22, fontWeight: '700', flex: 1},

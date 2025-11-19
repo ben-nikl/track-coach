@@ -5,8 +5,8 @@
  * with swipe navigation between laps
  */
 
-import React, {useRef, useState} from 'react';
-import {GestureResponderEvent, PanResponder, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import React, {useState} from 'react';
+import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import MapView, {MapViewProps, Marker, Polyline} from 'react-native-maps';
 import {useTheme} from '../ThemeProvider';
 import {LapRecord} from '../helpers/lapSessionTypes';
@@ -53,7 +53,6 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
                                                                  }) => {
     const {colors} = useTheme();
     const [currentLapIndex, setCurrentLapIndex] = useState(initialLapIndex);
-    const [swipeStartY, setSwipeStartY] = useState(0);
 
     const currentLap = laps.find(lap => lap.lapIndex === currentLapIndex);
     const currentLapArrayIndex = laps.findIndex(lap => lap.lapIndex === currentLapIndex);
@@ -69,37 +68,6 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
         return {id: sector.id, start: segment.start, end: segment.end};
     });
 
-    // Swipe gesture handler
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, gestureState) => {
-                // Only trigger if vertical movement is significant
-                return Math.abs(gestureState.dy) > 10;
-            },
-            onPanResponderGrant: (evt: GestureResponderEvent) => {
-                setSwipeStartY(evt.nativeEvent.pageY);
-            },
-            onPanResponderRelease: (evt: GestureResponderEvent) => {
-                const swipeEndY = evt.nativeEvent.pageY;
-                const swipeDistance = swipeStartY - swipeEndY;
-                const swipeThreshold = 50;
-
-                if (swipeDistance > swipeThreshold) {
-                    // Swipe up - next lap (higher lap number)
-                    if (currentLapArrayIndex < laps.length - 1) {
-                        setCurrentLapIndex(laps[currentLapArrayIndex + 1].lapIndex);
-                    }
-                } else if (swipeDistance < -swipeThreshold) {
-                    // Swipe down - previous lap (lower lap number)
-                    if (currentLapArrayIndex > 0) {
-                        setCurrentLapIndex(laps[currentLapArrayIndex - 1].lapIndex);
-                    }
-                }
-            },
-        })
-    ).current;
-
     const goToPreviousLap = () => {
         if (currentLapArrayIndex > 0) {
             setCurrentLapIndex(laps[currentLapArrayIndex - 1].lapIndex);
@@ -113,7 +81,7 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
     };
 
     return (
-        <View style={[styles.container, {backgroundColor: colors.background}]} {...panResponder.panHandlers}>
+        <View style={[styles.container, {backgroundColor: colors.background}]}>
             {/* Header */}
             <View style={[styles.header, {backgroundColor: colors.surface, borderBottomColor: colors.border}]}>
                 <TouchableOpacity onPress={onBack} style={styles.backButton}>

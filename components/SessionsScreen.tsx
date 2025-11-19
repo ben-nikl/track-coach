@@ -7,6 +7,7 @@
 import React, {useEffect, useState} from 'react';
 import {Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {SwipeListView} from 'react-native-swipe-list-view';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTheme} from '../ThemeProvider';
 import {SessionListItem} from '../helpers/sessionStorageTypes';
 import {deleteSession, loadAllSessions} from '../helpers/sessionStorage';
@@ -133,7 +134,7 @@ const SessionsScreen: React.FC<SessionsScreenProps> = ({onSelectSession}) => {
     }
 
     return (
-        <View style={[styles.container, {backgroundColor: colors.background}]}>
+        <SafeAreaView style={[styles.container, {backgroundColor: colors.background}]}>
             <SwipeListView
                 data={sessions}
                 renderItem={renderSessionItem}
@@ -144,7 +145,7 @@ const SessionsScreen: React.FC<SessionsScreenProps> = ({onSelectSession}) => {
                 disableRightSwipe
                 closeOnRowPress
             />
-        </View>
+        </SafeAreaView>
     );
 };
 
