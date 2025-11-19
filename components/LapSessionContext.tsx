@@ -576,14 +576,40 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     const currentLapElapsedMs = currentLapStartMs != null ? nowMs - currentLapStartMs : null;
     const lapNumber = lapTimes.length + (currentLapStartMs != null ? 1 : 0);
     const ghostLapMs = bestLapMs ?? undefined;
+    const isGhostModeActive = ghostLapMs != null;
+
     const sectorBoxes = (() => {
         const total = sectorBoundaryLinesRef.current.length + 1;
         const activeIndex = currentLapStartMs != null ? Math.min(sectorsTiming.length + 1, total) : null;
-        return Array.from({length: total}, (_, i) => ({
-            index: i + 1,
-            time: sectorsTiming[i]?.timeMs,
-            active: activeIndex === i + 1
-        }));
+
+        // Vypočítat nejlepší časy v každém sektoru ze všech dokončených kol
+        const bestSectorTimes: (number | null)[] = Array(total).fill(null);
+
+        laps.forEach(lap => {
+            lap.sectorSplitsMs.forEach((splitTime, sectorIndex) => {
+                if (splitTime != null && (bestSectorTimes[sectorIndex] == null || splitTime < bestSectorTimes[sectorIndex]!)) {
+                    bestSectorTimes[sectorIndex] = splitTime;
+                }
+            });
+        });
+
+        return Array.from({length: total}, (_, i) => {
+            const currentTime = sectorsTiming[i]?.timeMs;
+            const bestTime = bestSectorTimes[i];
+
+            // Určit, zda je aktuální čas nejlepší personal/overall
+            const isBestPersonal = currentTime != null && bestTime != null && currentTime <= bestTime;
+            const isBestOverall = isBestPersonal; // V současnosti nemáme data od jiných jezdců
+
+            return {
+                index: i + 1,
+                time: currentTime,
+                active: activeIndex === i + 1,
+                isGhostModeActive,
+                isBestOverall,
+                isBestPersonal
+            };
+        });
     })();
 
     // Helper function to update session in storage

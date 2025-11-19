@@ -95,5 +95,7 @@ export interface SectorBox {
     index: number;
     time?: number;
     active: boolean;
+    isGhostModeActive?: boolean;
+    isBestOverall?: boolean;
+    isBestPersonal?: boolean;
 }
-

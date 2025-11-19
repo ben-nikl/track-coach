@@ -9,11 +9,33 @@ export interface SectorBoxProps {
     delta?: number; // ms vs reference (negative = better)
     referenceName?: string; // e.g. 'SECTOR 2'
     active?: boolean; // highlight current sector
+    isGhostModeActive?: boolean; // whether ghost mode is active
+    isBestOverall?: boolean; // best time among all participants in this sector
+    isBestPersonal?: boolean; // best personal time in this sector
 }
 
-const SectorBox: React.FC<SectorBoxProps> = ({index, time, delta, referenceName, active}) => {
+const SectorBox: React.FC<SectorBoxProps> = ({
+                                                 index,
+                                                 time,
+                                                 delta,
+                                                 referenceName,
+                                                 active,
+                                                 isGhostModeActive,
+                                                 isBestOverall,
+                                                 isBestPersonal
+                                             }) => {
     const {colors} = useTheme();
-    const colorBar = delta == null ? colors.border : delta < 0 ? colors.danger : delta > 0 ? colors.warning : colors.doveGray;
+
+    // Logika pro colorBar: červená pokud ghost mode a nejlepší overall, oranžová pokud nejlepší personal, jinak šedá
+    let colorBar: string;
+    if (isGhostModeActive && isBestOverall) {
+        colorBar = colors.danger; // červená - nejlepší ze všech
+    } else if (isBestPersonal) {
+        colorBar = colors.warning; // oranžová - nejlepší osobní
+    } else {
+        colorBar = colors.doveGray; // šedá - jinak
+    }
+
     const deltaColor = delta == null ? colors.secondaryText : delta < 0 ? colors.warning : delta > 0 ? colors.danger : colors.secondaryText;
     const baseBg = (colors as any).mineShaft20 || colors.surface;
     const activeStyles = active ? {borderColor: colors.accent, backgroundColor: colors.accent + '22'} : {};

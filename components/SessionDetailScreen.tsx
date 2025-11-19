@@ -10,6 +10,8 @@ import {useTheme} from '../ThemeProvider';
 import {SessionRecord} from '../helpers/sessionStorageTypes';
 import {calculateSessionSummary, loadSession} from '../helpers/sessionStorage';
 import {formatLapTime} from './LapTimerScreen/format';
+import LapTrajectoryViewer from './LapTrajectoryViewer';
+import {TRACKS} from '../data/tracks';
 
 interface SessionDetailScreenProps {
     sessionId: string;
@@ -20,6 +22,7 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
     const {colors} = useTheme();
     const [session, setSession] = useState<SessionRecord | null>(null);
     const [loading, setLoading] = useState(true);
+    const [viewingLapIndex, setViewingLapIndex] = useState<number | null>(null);
 
     useEffect(() => {
         loadSessionData();
@@ -51,6 +54,35 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
                 <Text style={[styles.errorText, {color: colors.danger}]}>Session not found</Text>
             </View>
         );
+    }
+
+    // If viewing a specific lap trajectory, show the viewer
+    if (viewingLapIndex !== null) {
+        const track = TRACKS.find(t => t.id === session.trackId);
+        if (!track) {
+            // Track not found, go back to table
+            setViewingLapIndex(null);
+        } else {
+            return (
+                <LapTrajectoryViewer
+                    trackName={session.trackName}
+                    trackLocation={session.trackLocation}
+                    mapRegion={{
+                        latitude: track.latitude,
+                        longitude: track.longitude,
+                        latitudeDelta: track.latitudeDelta,
+                        longitudeDelta: track.longitudeDelta,
+                    }}
+                    startLine={track.startLine}
+                    finishLine={track.finishLine}
+                    sectors={track.sectors}
+                    laps={session.laps}
+                    initialLapIndex={viewingLapIndex}
+                    bestLapTimeMs={session.bestLapTimeMs}
+                    onBack={() => setViewingLapIndex(null)}
+                />
+            );
+        }
     }
 
     const summary = calculateSessionSummary(session);
@@ -133,6 +165,7 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
 
             {/* Lap Table */}
             <Text style={[styles.sectionTitle, {color: colors.text}]}>Lap Times</Text>
+            <Text style={[styles.tapHint, {color: colors.secondaryText}]}>Tap any lap to view trajectory on map</Text>
             <View style={[styles.table, {borderColor: colors.border}]}>
                 {/* Table Header */}
                 <View style={[styles.tableRow, styles.tableHeader, {backgroundColor: colors.surface}]}>
@@ -147,8 +180,12 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
                 {session.laps.map((lap, idx) => {
                     const isBestLap = idx === bestLapIndex;
                     return (
-                        <View key={lap.lapIndex}
-                              style={[styles.tableRow, {backgroundColor: idx % 2 ? colors.background : 'transparent'}]}>
+                        <TouchableOpacity
+                            key={lap.lapIndex}
+                            onPress={() => setViewingLapIndex(lap.lapIndex)}
+                            activeOpacity={0.7}
+                            style={[styles.tableRow, {backgroundColor: idx % 2 ? colors.background : 'transparent'}]}
+                        >
                             <Text style={[styles.tableCell, {color: colors.text}]}>{lap.lapIndex}</Text>
                             <Text style={[
                                 styles.tableCell,
@@ -182,7 +219,7 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
                                     </Text>
                                 );
                             })}
-                        </View>
+                        </TouchableOpacity>
                     );
                 })}
             </View>
@@ -321,6 +358,11 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 40,
         fontSize: 16,
+    },
+    tapHint: {
+        textAlign: 'center',
+        marginBottom: 8,
+        fontSize: 14,
     },
 });
 

@@ -126,7 +126,15 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
                 <View style={styles.landscapeRight}>
                     <View style={styles.sectorsGrid}>
                         {sectorBoxes.map(s => (
-                            <SectorBox key={s.index} index={s.index} time={s.time} active={s.active}/>
+                            <SectorBox
+                                key={s.index}
+                                index={s.index}
+                                time={s.time}
+                                active={s.active}
+                                isGhostModeActive={s.isGhostModeActive}
+                                isBestOverall={s.isBestOverall}
+                                isBestPersonal={s.isBestPersonal}
+                            />
                         ))}
                     </View>
                 </View>
@@ -161,7 +169,15 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
             </View>
             <View style={styles.sectorsGridPortrait}>
                 {sectorBoxes.map(s => (
-                    <SectorBox key={s.index} index={s.index} time={s.time} active={s.active}/>
+                    <SectorBox
+                        key={s.index}
+                        index={s.index}
+                        time={s.time}
+                        active={s.active}
+                        isGhostModeActive={s.isGhostModeActive}
+                        isBestOverall={s.isBestOverall}
+                        isBestPersonal={s.isBestPersonal}
+                    />
                 ))}
             </View>
             <LapPanel title="Best Lap" style={[styles.bestLapPortrait, styles.sectionStretch]}>
