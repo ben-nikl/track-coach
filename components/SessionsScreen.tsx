@@ -5,10 +5,11 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {FlatList, Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {SwipeListView} from 'react-native-swipe-list-view';
 import {useTheme} from '../ThemeProvider';
 import {SessionListItem} from '../helpers/sessionStorageTypes';
-import {loadAllSessions} from '../helpers/sessionStorage';
+import {deleteSession, loadAllSessions} from '../helpers/sessionStorage';
 import {formatLapTime} from './LapTimerScreen/format';
 import {TRACKS} from '../data/tracks';
 
@@ -42,6 +43,15 @@ const SessionsScreen: React.FC<SessionsScreenProps> = ({onSelectSession}) => {
             console.error('Failed to load sessions:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDeleteSession = async (sessionId: string) => {
+        try {
+            await deleteSession(sessionId);
+            setSessions(prevSessions => prevSessions.filter(session => session.id !== sessionId));
+        } catch (error) {
+            console.error('Failed to delete session:', error);
         }
     };
 
@@ -90,6 +100,17 @@ const SessionsScreen: React.FC<SessionsScreenProps> = ({onSelectSession}) => {
         </TouchableOpacity>
     );
 
+    const renderHiddenItem = ({item}: { item: SessionListItem }) => (
+        <View style={styles.rowBack}>
+            <TouchableOpacity
+                style={[styles.deleteButton, {backgroundColor: colors.danger}]}
+                onPress={() => handleDeleteSession(item.id)}
+            >
+                <Text style={styles.deleteButtonText}>Smazat</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
     if (loading) {
         return (
             <View style={[styles.container, {backgroundColor: colors.background}]}>
@@ -113,11 +134,15 @@ const SessionsScreen: React.FC<SessionsScreenProps> = ({onSelectSession}) => {
 
     return (
         <View style={[styles.container, {backgroundColor: colors.background}]}>
-            <FlatList
+            <SwipeListView
                 data={sessions}
                 renderItem={renderSessionItem}
+                renderHiddenItem={renderHiddenItem}
                 keyExtractor={item => item.id}
                 contentContainerStyle={styles.listContent}
+                rightOpenValue={-80}
+                disableRightSwipe
+                closeOnRowPress
             />
         </View>
     );
@@ -180,6 +205,25 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
     },
+    rowBack: {
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        paddingRight: 16,
+        marginBottom: 12,
+        flex: 1,
+    },
+    deleteButton: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: 80,
+        height: '100%',
+        borderRadius: 12,
+    },
+    deleteButtonText: {
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 14,
+    },
     loadingText: {
         textAlign: 'center',
         marginTop: 40,
@@ -203,4 +247,3 @@ const styles = StyleSheet.create({
 });
 
 export default SessionsScreen;
-
