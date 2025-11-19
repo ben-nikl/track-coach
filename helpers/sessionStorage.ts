@@ -39,11 +39,52 @@ export function calculateOptimalLap(laps: LapRecord[]): { optimalTimeMs: number;
 }
 
 /**
- * Calculate total distance from lap data (approximate)
- * Assumes each lap is roughly the same distance
+ * Calculate total distance from GPS trajectory points across all laps
  */
-export function calculateTotalDistance(trackLengthKm: number, totalLaps: number): number {
-    return trackLengthKm * totalLaps;
+export function calculateTotalDistanceFromTrajectories(laps: LapRecord[]): number {
+    let totalDistanceMeters = 0;
+
+    for (const lap of laps) {
+        if (!lap.trajectoryPoints || lap.trajectoryPoints.length < 2) {
+            continue;
+        }
+
+        // Calculate distance for this lap by summing distances between consecutive points
+        for (let i = 1; i < lap.trajectoryPoints.length; i++) {
+            const p1 = lap.trajectoryPoints[i - 1];
+            const p2 = lap.trajectoryPoints[i];
+
+            const distanceMeters = haversineDistance(
+                p1.latitude,
+                p1.longitude,
+                p2.latitude,
+                p2.longitude
+            );
+
+            totalDistanceMeters += distanceMeters;
+        }
+    }
+
+    // Convert to kilometers
+    return totalDistanceMeters / 1000;
+}
+
+/**
+ * Haversine formula to calculate distance between two GPS coordinates
+ */
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371000; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
 }
 
 /**
@@ -156,4 +197,3 @@ export function calculateSessionSummary(session: SessionRecord): SessionSummary 
         optimalSectorTimes,
     };
 }
-
