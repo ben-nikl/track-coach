@@ -17,6 +17,7 @@ export interface Track {
     longitude: number; // map center longitude
     latitudeDelta: number;
     longitudeDelta: number;
+    trackLengthKm: number; // length of one lap in kilometers
     sectors: TrackSector[]; // ordered list of timing sectors
     startLine: TrackSector; // explicit start timing line definition
     finishLine?: TrackSector; // optional finish; if omitted, start==finish
@@ -33,6 +34,7 @@ export const TRACKS: Track[] = [
         longitude: 13.997966,
         latitudeDelta: 0.002,
         longitudeDelta: 0.002,
+        trackLengthKm: 3.2,
         // sectors now only includes intermediate boundaries (may be empty). Libomysl has one internal sector 'mid'.
         sectors: [
             {
@@ -65,6 +67,7 @@ export const TRACKS: Track[] = [
         longitude: 13.6326,
         latitudeDelta: 0.005,
         longitudeDelta: 0.005,
+        trackLengthKm: 4.212,
         sectors: [
             {
                 id: 'sector2',
@@ -95,6 +98,7 @@ export const TRACKS: Track[] = [
         longitude: 16.4576,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
+        trackLengthKm: 5.403,
         sectors: [
             {
                 id: 'sector2',
@@ -125,6 +129,7 @@ export const TRACKS: Track[] = [
         longitude: 17.5541,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
+        trackLengthKm: 5.922,
         sectors: [
             {
                 id: 'sector2',
@@ -155,6 +160,7 @@ export const TRACKS: Track[] = [
         longitude: 11.3719,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
+        trackLengthKm: 5.245,
         sectors: [
             {
                 id: 'sector2',
@@ -185,6 +191,7 @@ export const TRACKS: Track[] = [
         longitude: 2.261,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
+        trackLengthKm: 4.655,
         sectors: [
             {
                 id: 'sector2',

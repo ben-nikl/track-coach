@@ -35,6 +35,8 @@ import {
     TrajectoryPoint
 } from '../helpers/lapSessionTypes';
 import {TrajectoryManager} from '../helpers/trajectoryManager';
+import {calculateOptimalLap, calculateTotalDistance, saveSession} from '../helpers/sessionStorage';
+import {SessionRecord} from '../helpers/sessionStorageTypes';
 
 interface LapSessionContextValue {
     events: LapEvent[];
@@ -77,6 +79,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     // session state
     const [trackData, setTrackData] = useState<Track | null>(null);
     const [sessionActive, setSessionActive] = useState(false);
+    const [sessionStartTime, setSessionStartTime] = useState<string | null>(null);
     const [lapTimes, setLapTimes] = useState<number[]>([]);
     const [currentLapStartMs, setCurrentLapStartMs] = useState<number | null>(null);
     const [lastLapMs, setLastLapMs] = useState<number | null>(null);
@@ -583,6 +586,8 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     })();
 
     const startSession = useCallback((track: Track) => {
+        const startTime = new Date().toISOString();
+        setSessionStartTime(startTime);
         setTrackData(track);
         setSessionActive(true);
         setLapTimes([]);
@@ -608,8 +613,37 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         detachLocationSubscriber();
         highFrequencyLocationManager.stop();
         trajectoryManagerRef.current.clearCurrentLap();
+
+        // Save session metadata if we have completed laps
+        if (trackData && laps.length > 0 && sessionStartTime) {
+            const endTime = new Date().toISOString();
+            const {optimalTimeMs, optimalSectorTimes} = calculateOptimalLap(laps);
+            const bestLap = Math.min(...laps.map(l => l.lapTimeMs));
+            const totalTimeMs = laps.reduce((sum, lap) => sum + lap.lapTimeMs, 0);
+            const totalDistance = calculateTotalDistance(trackData.trackLengthKm, laps.length);
+
+            const sessionRecord: SessionRecord = {
+                id: `session_${Date.now()}`,
+                trackId: trackData.id,
+                trackName: trackData.name,
+                trackLocation: trackData.location,
+                startTime: sessionStartTime,
+                endTime,
+                laps,
+                totalLaps: laps.length,
+                bestLapTimeMs: bestLap,
+                optimalLapTimeMs: optimalTimeMs,
+                totalTimeMs,
+                totalDistanceKm: totalDistance,
+            };
+
+            saveSession(sessionRecord).catch(e => {
+                console.error('Failed to save session', e);
+            });
+        }
+
         addToast('Session ended');
-    }, [addToast]);
+    }, [addToast, laps, trackData, sessionStartTime]);
 
     const getTrajectoryForLap = useCallback((lapIndex: number) => {
         return trajectoryManagerRef.current.getTrajectory(lapIndex);
