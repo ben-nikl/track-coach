@@ -5,7 +5,7 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {ScrollView, StyleSheet, Text, View} from 'react-native';
+import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {useTheme} from '../ThemeProvider';
 import {SessionRecord} from '../helpers/sessionStorageTypes';
 import {calculateSessionSummary, loadSession} from '../helpers/sessionStorage';
@@ -13,9 +13,10 @@ import {formatLapTime} from './LapTimerScreen/format';
 
 interface SessionDetailScreenProps {
     sessionId: string;
+    onBack?: () => void;
 }
 
-const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId}) => {
+const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onBack}) => {
     const {colors} = useTheme();
     const [session, setSession] = useState<SessionRecord | null>(null);
     const [loading, setLoading] = useState(true);
@@ -73,6 +74,13 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId}) =>
     return (
         <ScrollView style={[styles.container, {backgroundColor: colors.background}]}
                     contentContainerStyle={styles.content}>
+            {/* Back Button */}
+            {onBack && (
+                <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                    <Text style={[styles.backButtonText, {color: colors.accent}]}>← Back</Text>
+                </TouchableOpacity>
+            )}
+
             {/* Header */}
             <View style={styles.header}>
                 <Text style={[styles.title, {color: colors.text}]}>{session.trackName}</Text>
@@ -189,6 +197,18 @@ const styles = StyleSheet.create({
     content: {
         padding: 16,
         paddingBottom: 100,
+        paddingTop: 60,
+    },
+    backButton: {
+        position: 'absolute',
+        top: 8,
+        left: 8,
+        padding: 12,
+        zIndex: 10,
+    },
+    backButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
     },
     header: {
         marginBottom: 20,
@@ -305,4 +325,3 @@ const styles = StyleSheet.create({
 });
 
 export default SessionDetailScreen;
-

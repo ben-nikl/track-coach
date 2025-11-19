@@ -8,11 +8,13 @@ import TrackListScreen from './components/TrackListScreen';
 import SettingsScreen from './components/SettingsScreen';
 import LapTimerScreen from './components/LapTimerScreen/LapTimerScreen';
 import {ThemeProvider, useTheme} from './ThemeProvider';
-import SessionLogScreen from './components/SessionLogScreen';
 import {LapSessionProvider} from './components/LapSessionContext';
+import SessionsScreen from './components/SessionsScreen';
+import SessionDetailScreen from './components/SessionDetailScreen';
 
 const AppContent: React.FC = () => {
     const [selected, setSelected] = useState('home');
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const {colors, mode} = useTheme();
     const items = [
         {id: 'home', label: 'Home'},
@@ -22,6 +24,15 @@ const AppContent: React.FC = () => {
         {id: 'stats', label: 'Stats'},
         {id: 'settings', label: 'Settings'},
     ];
+
+    const handleSelectSession = (sessionId: string) => {
+        setSelectedSessionId(sessionId);
+    };
+
+    const handleBackFromSessionDetail = () => {
+        setSelectedSessionId(null);
+    };
+
     return (
         <View style={[styles.container, {backgroundColor: colors.background}]}>
             <View style={selected === 'stats' ? styles.contentStats : styles.content}>
@@ -32,7 +43,14 @@ const AppContent: React.FC = () => {
                         setSelected('lap');
                     }}/>
                 ) : selected === 'sessions' ? (
-                    <SessionLogScreen/>
+                    selectedSessionId ? (
+                        <SessionDetailScreen
+                            sessionId={selectedSessionId}
+                            onBack={handleBackFromSessionDetail}
+                        />
+                    ) : (
+                        <SessionsScreen onSelectSession={handleSelectSession}/>
+                    )
                 ) : selected === 'settings' ? (
                     <SettingsScreen/>
                 ) : selected === 'lap' ? (
@@ -47,7 +65,10 @@ const AppContent: React.FC = () => {
                     </View>
                 )}
             </View>
-            <BottomMenu items={items} selectedId={selected} onSelect={setSelected}/>
+            <BottomMenu items={items} selectedId={selected} onSelect={(id) => {
+                setSelected(id);
+                setSelectedSessionId(null); // Reset session detail when changing tabs
+            }}/>
             <StatusBar style={mode === 'dark' ? 'light' : 'dark'}/>
         </View>
     );
