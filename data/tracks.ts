@@ -5,6 +5,7 @@ export interface TrackSector {
     center: LatLng;    // point on center line of track at this sector
     trackP1: LatLng;   // first point defining direction (preceding or following along track)
     trackP2: LatLng;   // second point defining direction (following or preceding along track)
+    halfWidth?: number; // half-width of timing line in meters (default: 12m)
 }
 
 // Centralized track definitions with map region + start/end centers
@@ -37,22 +38,24 @@ export const TRACKS: Track[] = [
         sectors: [
             {
                 id: 'sector1',
-                center: {latitude: 49.871475, longitude: 13.998001},
-                trackP1: {latitude: 49.871497, longitude: 13.998078},
-                trackP2: {latitude: 49.871520, longitude: 13.997950}
+                center: {latitude: 49.87146565704214, longitude: 13.99814602374828},
+                trackP1: {latitude: 49.87143012744712, longitude: 13.99827037995065},
+                trackP2: {latitude: 49.871467349193715, longitude: 13.998049388539968},
+                halfWidth: 6
             },
             {
                 id: 'sector2',
-                center: {latitude: 49.870968, longitude: 13.997721},
+                center: {latitude: 49.8710902548172, longitude: 13.997766810467205},
                 trackP1: {latitude: 49.870998, longitude: 13.997746},
-                trackP2: {latitude: 49.870938, longitude: 13.997721}
+                trackP2: {latitude: 49.870938, longitude: 13.997721},
+                halfWidth: 15
             },
         ],
         startLine: {
             id: 'start',
-            center: {latitude: 49.871018, longitude: 13.998206},
-            trackP1: {latitude: 49.870859, longitude: 13.998167},
-            trackP2: {latitude: 49.871033, longitude: 13.998240}
+            center: {latitude: 49.87118968229144, longitude: 13.998301148495568},
+            trackP1: {latitude: 49.87108722419816, longitude: 13.998293456359338},
+            trackP2: {latitude: 49.871223559516416, longitude: 13.998340891199417}
         },
         // finishLine omitted => identical to startLine
     },

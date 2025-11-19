@@ -66,6 +66,9 @@ interface LapSessionContextValue {
     selectedLapIndex: number | null;
     setSelectedLapIndex: (index: number | null) => void;
     getTrajectoryForLap: (lapIndex: number) => TrajectoryPoint[] | undefined;
+    showDeltaMode: boolean;
+    currentDeltaMs: number | null;
+    isGhostModeActive: boolean;
 }
 
 const LapSessionContext = createContext<LapSessionContextValue | undefined>(undefined);
@@ -93,6 +96,8 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     const [lastFusedSample, setLastFusedSample] = useState<FusedSample | null>(null);
     const [fusedSpeedMps, setFusedSpeedMps] = useState<number | null>(null);
     const [selectedLapIndex, setSelectedLapIndex] = useState<number | null>(null);
+    const [showDeltaMode, setShowDeltaMode] = useState<boolean>(false);
+    const [currentDeltaMs, setCurrentDeltaMs] = useState<number | null>(null);
 
     // Trajectory manager
     const trajectoryManagerRef = useRef(new TrajectoryManager());
@@ -218,13 +223,15 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             isSameStartFinishRef.current = false;
             return;
         }
-        const s = computePerpendicularSegment(trackData.startLine.center, trackData.startLine.trackP1, trackData.startLine.trackP2, LINE_HALF_WIDTH_M);
+        const startHalfWidth = trackData.startLine.halfWidth ?? LINE_HALF_WIDTH_M;
+        const s = computePerpendicularSegment(trackData.startLine.center, trackData.startLine.trackP1, trackData.startLine.trackP2, startHalfWidth);
         const finishSource = trackData.finishLine ?? trackData.startLine;
-        const f = computePerpendicularSegment(finishSource.center, finishSource.trackP1, finishSource.trackP2, LINE_HALF_WIDTH_M);
+        const finishHalfWidth = finishSource.halfWidth ?? LINE_HALF_WIDTH_M;
+        const f = computePerpendicularSegment(finishSource.center, finishSource.trackP1, finishSource.trackP2, finishHalfWidth);
         startFinishSegmentsRef.current = {start: s, finish: f};
         sectorSegmentsRef.current = trackData.sectors.map(sec => ({
             id: sec.id,
-            seg: computePerpendicularSegment(sec.center, sec.trackP1, sec.trackP2, LINE_HALF_WIDTH_M)
+            seg: computePerpendicularSegment(sec.center, sec.trackP1, sec.trackP2, sec.halfWidth ?? LINE_HALF_WIDTH_M)
         }));
         sectorBoundaryLinesRef.current = trackData.sectors;
         if (!trackData.finishLine || trackData.startLine.id === trackData.finishLine.id) {
@@ -267,6 +274,18 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             prevSectorCrossMsRef.current = crossingTimeMs;
             addToast(`SECTOR split #${prev.length + 1}: ${formatLapTime(split)}`);
             if (currentLapStartMs != null) defer(() => logSector(crossingTimeMs, lapElapsed, split, prev.length + 1));
+
+            // Disable delta mode after crossing the last segment line (first sector of new lap)
+            const totalSectors = sectorBoundaryLinesRef.current.length + 1;
+            if (prev.length === totalSectors - 1) {
+                // This is the last sector line crossing, next will be finish
+                // We want to disable delta mode after finish when we cross the FIRST sector line of the new lap
+            } else if (prev.length === 0) {
+                // First sector of new lap - disable delta mode
+                setShowDeltaMode(false);
+                setCurrentDeltaMs(null);
+            }
+
             return [...prev, {id: sectorId, timeMs: split}];
         });
     }, [currentLapStartMs, logSector, addToast]);
@@ -296,7 +315,27 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         const lastBoundary = prevSectorCrossMsRef.current ?? currentLapStartMs;
         const finalSplit = finishTimeMs - lastBoundary;
         const lapDuration = finishTimeMs - currentLapStartMs;
-        const sectorSplitsMs = sectorsTiming.map(s => s.timeMs ?? 0);
+
+        // Ensure we have all sector splits including the final one
+        const expectedSectorCount = sectorBoundaryLinesRef.current.length + 1;
+        const currentSectorSplits = sectorsTiming.map(s => s.timeMs ?? 0);
+
+        // Build complete sector splits array with proper values
+        const sectorSplitsMs: number[] = [];
+        for (let i = 0; i < expectedSectorCount; i++) {
+            if (i < currentSectorSplits.length) {
+                // Use existing sector time
+                sectorSplitsMs.push(currentSectorSplits[i]);
+            } else if (i === expectedSectorCount - 1) {
+                // Last sector - use final split
+                sectorSplitsMs.push(finalSplit);
+            } else {
+                // Missing intermediate sector - this shouldn't happen, but handle it
+                // Use 0 as placeholder or calculate from lap time
+                console.warn(`Missing sector ${i + 1} data in lap`);
+                sectorSplitsMs.push(0);
+            }
+        }
 
         addToast(`Lap finished: ${formatLapTime(lapDuration)}`);
         defer(() => logFinish(finishTimeMs, finishTimeMs - currentLapStartMs, lapDuration, finalSplit, sectorSplitsMs));
@@ -319,6 +358,18 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
 
         setLastLapMs(lapDuration);
         setBestLapMs(prev => prev == null || lapDuration < prev ? lapDuration : prev);
+
+        // Enable delta mode and calculate delta after finish
+        setShowDeltaMode(true);
+        // Calculate delta: difference from best lap (or from ghost best if ghost mode is active)
+        // Ghost mode is not currently active, so we compare against our own best lap
+        const comparisonTime = isGhostModeActive ? ghostLapMs : bestLapMs;
+        if (comparisonTime != null) {
+            setCurrentDeltaMs(lapDuration - comparisonTime);
+        } else {
+            // First lap, no comparison available
+            setCurrentDeltaMs(null);
+        }
 
         if (isSameStartFinishRef.current) {
             setTimeout(() => {
@@ -556,27 +607,35 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         };
     }, [sessionActive, trackData]);
 
-    // timer tick
+    // timer tick - update every 100ms instead of every frame to reduce flickering
     useEffect(() => {
         if (!sessionActive || currentLapStartMs == null) return;
-        let raf: number;
+        let intervalId: NodeJS.Timeout;
         let active = true;
+
         const tick = () => {
             if (!active) return;
             setNowMs(Date.now());
-            raf = requestAnimationFrame(tick);
         };
+
+        // Initial tick
         tick();
+
+        // Update every 100ms for smoother display without excessive updates
+        intervalId = setInterval(tick, 100);
+
         return () => {
             active = false;
-            if (raf) cancelAnimationFrame(raf);
+            if (intervalId) clearInterval(intervalId);
         };
     }, [sessionActive, currentLapStartMs]);
 
     const currentLapElapsedMs = currentLapStartMs != null ? nowMs - currentLapStartMs : null;
     const lapNumber = lapTimes.length + (currentLapStartMs != null ? 1 : 0);
     const ghostLapMs = bestLapMs ?? undefined;
-    const isGhostModeActive = ghostLapMs != null;
+    // Ghost mode should only be active when we have data from other participants
+    // For now, we don't have that data, so ghost mode is always false
+    const isGhostModeActive = false; // TODO: Enable when we have external participant data
 
     const sectorBoxes = (() => {
         const total = sectorBoundaryLinesRef.current.length + 1;
@@ -599,7 +658,17 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
 
             // Určit, zda je aktuální čas nejlepší personal/overall
             const isBestPersonal = currentTime != null && bestTime != null && currentTime <= bestTime;
-            const isBestOverall = isBestPersonal; // V současnosti nemáme data od jiných jezdců
+            const isBestOverall = false; // V současnosti nemáme data od jiných jezdců
+
+            // Vypočítat aktuální čas v aktivním sektoru
+            let currentSectorTimeMs: number | undefined;
+            if (activeIndex === i + 1 && currentLapStartMs != null) {
+                // Tento sektor je aktivní - vypočítat uplynulý čas od začátku sektoru
+                const sectorStartMs = i === 0
+                    ? currentLapStartMs
+                    : (prevSectorCrossMsRef.current ?? currentLapStartMs);
+                currentSectorTimeMs = nowMs - sectorStartMs;
+            }
 
             return {
                 index: i + 1,
@@ -607,7 +676,9 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
                 active: activeIndex === i + 1,
                 isGhostModeActive,
                 isBestOverall,
-                isBestPersonal
+                isBestPersonal,
+                currentSectorTimeMs,
+                bestSectorTime: bestTime ?? undefined
             };
         });
     })();
@@ -741,7 +812,10 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         fusedSpeedMps,
         selectedLapIndex,
         setSelectedLapIndex,
-        getTrajectoryForLap
+        getTrajectoryForLap,
+        showDeltaMode,
+        currentDeltaMs,
+        isGhostModeActive
     }}>{children}</LapSessionContext.Provider>;
 };
 

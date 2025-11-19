@@ -33,6 +33,10 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
         ghostLapMs,
         endSession,
         sessionActive,
+        currentLapStartMs,
+        showDeltaMode,
+        currentDeltaMs,
+        isGhostModeActive,
     } = useLapSession();
 
     // Handler for back button - returns to track detail if session active, otherwise calls onBack
@@ -44,16 +48,57 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
         }
     };
 
-    const distancesPanel = lineDistances.length > 0 && (
-        <LapPanel title="Distances" style={{marginTop: 8}}>
-            <View style={{flexDirection: 'row', flexWrap: 'wrap', rowGap: 4, columnGap: 12}}>
-                {lineDistances.map(ld => (
-                    <Text key={ld.id} style={{
-                        color: colors.secondaryText,
-                        fontSize: 12
-                    }}>{ld.label}: {ld.distance.toFixed(1)} m</Text>
-                ))}
-            </View>
+    // Find distance to start line for display before lap starts
+    const startLineDistance = lineDistances.find(ld => ld.id === trackData?.startLine.id || ld.label === 'Start');
+
+    // Determine what to show in the info panel
+    const getInfoPanelContent = () => {
+        // Before lap starts: show distance to start line
+        if (currentLapStartMs == null && startLineDistance) {
+            return {
+                label: 'Distance to Start',
+                value: `${startLineDistance.distance.toFixed(1)} m`,
+                color: colors.secondaryText
+            };
+        }
+
+        // After finish, before first sector: show delta
+        if (showDeltaMode && currentDeltaMs != null) {
+            const deltaSign = currentDeltaMs >= 0 ? '+' : '';
+            const deltaColor = currentDeltaMs < 0 ? colors.success : colors.danger;
+            return {
+                label: isGhostModeActive ? 'Delta (Ghost)' : 'Delta (Best)',
+                value: `${deltaSign}${formatLapTime(Math.abs(currentDeltaMs))}`,
+                color: deltaColor
+            };
+        }
+
+        // During lap: show current lap time
+        if (currentLapElapsedMs != null) {
+            return {
+                label: 'Current Lap',
+                value: formatLapTime(currentLapElapsedMs),
+                color: colors.accent
+            };
+        }
+
+        // Fallback: empty
+        return null;
+    };
+
+    const infoPanelContent = getInfoPanelContent();
+
+    const infoPanel = infoPanelContent && (
+        <LapPanel title={infoPanelContent.label} style={{marginTop: 8}} center>
+            <Text style={{
+                color: infoPanelContent.color,
+                fontSize: 28,
+                fontWeight: '700',
+                textAlign: 'center',
+                fontVariant: ['tabular-nums']
+            }}>
+                {infoPanelContent.value}
+            </Text>
         </LapPanel>
     );
 
@@ -134,16 +179,14 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
                                 isGhostModeActive={s.isGhostModeActive}
                                 isBestOverall={s.isBestOverall}
                                 isBestPersonal={s.isBestPersonal}
+                                currentSectorTimeMs={s.currentSectorTimeMs}
+                                bestSectorTime={s.bestSectorTime}
                             />
                         ))}
                     </View>
                 </View>
             </View>
-            {currentLapElapsedMs != null && (
-                <Text style={{color: colors.accent, textAlign: 'center', marginTop: 8}}>Current
-                    Lap: {formatLapTime(currentLapElapsedMs)}</Text>
-            )}
-            {distancesPanel}
+            {infoPanel}
             {permissionError && (
                 <Text style={{color: colors.danger, textAlign: 'center', marginTop: 4}}>{permissionError}</Text>
             )}
@@ -159,13 +202,7 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
             </LapPanel>
             <View style={[styles.lastLapPortrait, styles.sectionStretch]}>
                 <LapTimeDisplay lastLapMs={lastLapMs ?? undefined} lastLapDeltaMs={undefined} lapNumber={lapNumber}/>
-                {currentLapElapsedMs != null && (
-                    <Text style={{
-                        color: colors.accent,
-                        marginTop: 8
-                    }}>Current: {formatLapTime(currentLapElapsedMs)}</Text>
-                )}
-                {distancesPanel}
+                {infoPanel}
             </View>
             <View style={styles.sectorsGridPortrait}>
                 {sectorBoxes.map(s => (
@@ -177,6 +214,8 @@ const LapTimerScreen: React.FC<LapTimerScreenProps> = ({onBack, onMenu, onShowTr
                         isGhostModeActive={s.isGhostModeActive}
                         isBestOverall={s.isBestOverall}
                         isBestPersonal={s.isBestPersonal}
+                        currentSectorTimeMs={s.currentSectorTimeMs}
+                        bestSectorTime={s.bestSectorTime}
                     />
                 ))}
             </View>
@@ -210,7 +249,7 @@ const styles = StyleSheet.create({
     headerBtnText: {fontSize: 18, fontWeight: '600'},
     trackTitle: {fontSize: 16, fontWeight: '700'},
     spacer: {height: 16},
-    panelMainTime: {fontSize: 32, fontWeight: '700', textAlign: 'center'},
+    panelMainTime: {fontSize: 32, fontWeight: '700', textAlign: 'center', fontVariant: ['tabular-nums']},
     ghostPortrait: {
         marginBottom: 32,
         flexDirection: 'column',
@@ -245,6 +284,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.15,
         shadowRadius: 4,
         elevation: 3
+    },
+    currentLapTime: {
+        fontSize: 24,
+        fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 8
     },
 });
 

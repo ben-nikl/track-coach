@@ -88,9 +88,15 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
     const summary = calculateSessionSummary(session);
     const bestLapIndex = session.laps.findIndex(lap => lap.lapTimeMs === session.bestLapTimeMs);
 
-    // Find best time for each sector across all laps
-    const numSectors = session.laps[0]?.sectorSplitsMs.length || 0;
+    // Determine number of sectors from track definition, not from lap data
+    const track = TRACKS.find(t => t.id === session.trackId);
+    const numSectors = track ? track.sectors.length + 1 : (session.laps[0]?.sectorSplitsMs.length || 0);
     const bestSectorTimes = summary.optimalSectorTimes;
+
+    // Ensure bestSectorTimes has the correct length
+    while (bestSectorTimes.length < numSectors) {
+        bestSectorTimes.push(0);
+    }
 
     const formatDate = (isoString: string) => {
         const date = new Date(isoString);
@@ -179,6 +185,13 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
                 {/* Table Rows */}
                 {session.laps.map((lap, idx) => {
                     const isBestLap = idx === bestLapIndex;
+
+                    // Ensure lap has all sectors, pad with 0 if missing
+                    const paddedSectorSplits = [...lap.sectorSplitsMs];
+                    while (paddedSectorSplits.length < numSectors) {
+                        paddedSectorSplits.push(0);
+                    }
+
                     return (
                         <TouchableOpacity
                             key={lap.lapIndex}
@@ -199,15 +212,16 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
                             ]}>
                                 {formatLapTime(lap.lapTimeMs)}
                             </Text>
-                            {lap.sectorSplitsMs.map((sectorTime, sectorIdx) => {
-                                const isBestSector = sectorTime === bestSectorTimes[sectorIdx];
+                            {paddedSectorSplits.map((sectorTime, sectorIdx) => {
+                                const isBestSector = sectorTime > 0 && sectorTime === bestSectorTimes[sectorIdx];
+                                const isMissing = sectorTime === 0 || sectorTime == null;
                                 return (
                                     <Text
                                         key={sectorIdx}
                                         style={[
                                             styles.tableCell,
                                             {
-                                                color: isBestSector ? colors.warning : colors.text,
+                                                color: isMissing ? colors.secondaryText : (isBestSector ? colors.warning : colors.text),
                                                 fontWeight: isBestSector ? '700' : '400',
                                                 backgroundColor: isBestSector ? colors.warning + '22' : 'transparent',
                                                 borderRadius: 4,
@@ -215,7 +229,7 @@ const SessionDetailScreen: React.FC<SessionDetailScreenProps> = ({sessionId, onB
                                             }
                                         ]}
                                     >
-                                        {formatLapTime(sectorTime)}
+                                        {isMissing ? '--:--' : formatLapTime(sectorTime)}
                                     </Text>
                                 );
                             })}

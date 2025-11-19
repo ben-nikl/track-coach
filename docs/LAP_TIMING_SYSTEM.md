@@ -118,6 +118,7 @@ Calculates the exact time when a vehicle crossed a timing line.
 ---
 
 #####
+
 `computeLineDistances(currentPoint, startSegment, finishSegment, sectorSegments, isSameStartFinish, startLineId, finishLineId): DistanceResult[]`
 
 Computes distances from current position to all timing lines.
@@ -132,6 +133,7 @@ Computes distances from current position to all timing lines.
 ---
 
 #####
+
 `updateLineArmingStates(currentPoint, startSegment, finishSegment, sectorSegments, isSameStartFinish, startArmedRef, finishArmedRef, segmentArmedRef, rearmDistance)`
 
 Updates the armed state of all timing lines based on vehicle distance.
@@ -197,11 +199,11 @@ Adds a GPS point to the current lap trajectory.
 
 ```typescript
 {
-  latitude: number;
-  longitude: number;
-  timestamp: number;
-  speed?: number;
-  accuracy?: number;
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+    speed ? : number;
+    accuracy ? : number;
 }
 ```
 
@@ -259,14 +261,14 @@ Represents a timing event (start/sector/finish).
 
 ```typescript
 {
-  id: string;
-  type: 'start' | 'sector' | 'finish';
-  lapIndex: number;
-  sectorIndex?: number;
-  timestampMs: number;          // Interpolated crossing time
-  wallClockISO: string;         // Wall clock timestamp
-  lapElapsedMs?: number;        // Time since lap start
-  splitMs?: number;             // Sector split time
+    id: string;
+    type: 'start' | 'sector' | 'finish';
+    lapIndex: number;
+    sectorIndex ? : number;
+    timestampMs: number;          // Interpolated crossing time
+    wallClockISO: string;         // Wall clock timestamp
+    lapElapsedMs ? : number;        // Time since lap start
+    splitMs ? : number;             // Sector split time
 }
 ```
 
@@ -276,10 +278,10 @@ Complete record of a finished lap.
 
 ```typescript
 {
-  lapIndex: number;
-  lapTimeMs: number;            // Total lap time
-  sectorSplitsMs: number[];     // Array of sector split times
-  trajectoryPoints?: TrajectoryPoint[]; // GPS trajectory
+    lapIndex: number;
+    lapTimeMs: number;            // Total lap time
+    sectorSplitsMs: number[];     // Array of sector split times
+    trajectoryPoints ? : TrajectoryPoint[]; // GPS trajectory
 }
 ```
 
@@ -388,11 +390,30 @@ Main lap timing display during active session.
 **Features:**
 
 - Real-time lap timer with millisecond precision
-- Sector split display
-- Distance to timing lines
+- Sector split display with live timing
+- **Dynamic info panel** that shows:
+    - **Before lap starts:** Distance to start line (in meters)
+    - **During lap:** Current lap elapsed time
+    - **After finish (delta mode):** Time delta compared to best lap (or ghost lap if ghost mode active)
+    - Delta mode automatically switches back to current lap time after crossing first sector line
 - Last lap and best lap comparison
 - Toast notifications for timing events
 - Back button returns to track detail if session active
+
+**Delta Display Logic:**
+
+The info panel intelligently switches between three display modes:
+
+1. **Distance Mode** (before lap start): Shows distance to start line in meters
+    - Only start line distance is shown (not sector or finish line distances)
+2. **Current Lap Mode** (during lap): Shows elapsed time since lap start
+3. **Delta Mode** (after finish, until first sector): Shows time difference from comparison lap:
+    - If ghost mode OFF: compares to personal best lap
+    - If ghost mode ON: compares to best lap from ghost (external) participant
+    - Positive delta (red) = slower than comparison
+    - Negative delta (green) = faster than comparison
+
+The delta mode is enabled when crossing the finish line and disabled when crossing the first sector line of the new lap.
 
 ### TrackDetailScreen
 
@@ -468,4 +489,3 @@ Potential improvements:
 ## License
 
 This documentation is part of the Track Coach application.
-

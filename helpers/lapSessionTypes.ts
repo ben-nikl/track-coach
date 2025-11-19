@@ -98,4 +98,6 @@ export interface SectorBox {
     isGhostModeActive?: boolean;
     isBestOverall?: boolean;
     isBestPersonal?: boolean;
+    currentSectorTimeMs?: number; // current elapsed time in this active sector
+    bestSectorTime?: number; // best time in this sector for calculating delta
 }
