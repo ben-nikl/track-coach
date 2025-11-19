@@ -37,6 +37,7 @@ import {
 import {TrajectoryManager} from '../helpers/trajectoryManager';
 import {calculateOptimalLap, calculateTotalDistanceFromTrajectories, saveSession} from '../helpers/sessionStorage';
 import {SessionRecord} from '../helpers/sessionStorageTypes';
+import {AccelerationDetector} from '../helpers/accelerationDetector';
 
 interface LapSessionContextValue {
     events: LapEvent[];
@@ -101,6 +102,9 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
 
     // Trajectory manager
     const trajectoryManagerRef = useRef(new TrajectoryManager());
+
+    // Acceleration detector for braking/acceleration detection
+    const accelerationDetectorRef = useRef(new AccelerationDetector());
 
     const fusedThrottleRef = useRef<number>(0);
     const lastFusedSampleRef = useRef<FusedSample | null>(null);
@@ -530,14 +534,19 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
 
         lastFusedSampleRef.current = sample;
 
-        // Record trajectory point during active lap
+        // Record trajectory point during active lap with acceleration data
         if (currentLapStartMsRef.current != null && sessionActiveRef.current) {
+            const accelData = accelerationDetectorRef.current.getCurrentAcceleration(sample.speedMps);
+
             trajectoryManagerRef.current.addPoint({
                 latitude: sample.latitude,
                 longitude: sample.longitude,
                 timestamp: sample.timestamp,
                 speed: sample.speedMps,
-                accuracy: sample.accuracy
+                accuracy: sample.accuracy,
+                drivingState: accelData.state,
+                longitudinalG: accelData.longitudinalG,
+                lateralG: accelData.lateralG,
             });
         }
 
@@ -596,6 +605,16 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             if (!ok || !mounted) return;
             highFrequencyLocationManager.subscribe(subscribeCallback);
         });
+
+        // Start acceleration detector
+        accelerationDetectorRef.current.start().then(started => {
+            if (started) {
+                console.log('Acceleration detector started');
+            } else {
+                console.warn('Failed to start acceleration detector');
+            }
+        });
+
         return () => {
             mounted = false;
             if (fusedSubscribeCallbackRef.current) highFrequencyLocationManager.unsubscribe(fusedSubscribeCallbackRef.current);
@@ -604,6 +623,9 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             lastFusedSampleRef.current = null;
             setLastFusedSample(null);
             setFusedSpeedMps(null);
+
+            // Stop acceleration detector
+            accelerationDetectorRef.current.stop();
         };
     }, [sessionActive, trackData]);
 

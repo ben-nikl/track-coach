@@ -66,6 +66,10 @@ export interface TrajectoryPoint {
     timestamp: number;
     speed?: number;
     accuracy?: number;
+    // Acceleration data
+    drivingState?: 'braking' | 'accelerating' | 'coasting' | 'unknown';
+    longitudinalG?: number;
+    lateralG?: number;
 }
 
 // ============================================================================

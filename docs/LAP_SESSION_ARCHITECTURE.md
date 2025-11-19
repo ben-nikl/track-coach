@@ -586,6 +586,7 @@ try {
 }
 ```
 
+Distance calculations wrapped in try-catch during state updates:
 **Rationale**: UI features (distance display) shouldn't crash core timing logic.
 
 ### 5. Deferred Event Logging

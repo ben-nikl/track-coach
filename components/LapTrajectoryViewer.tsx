@@ -7,7 +7,7 @@
 
 import React, {useState} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import MapView, {MapViewProps, Marker, Polyline} from 'react-native-maps';
+import MapView, {MapViewProps, Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 import {useTheme} from '../ThemeProvider';
 import {LapRecord} from '../helpers/lapSessionTypes';
 import {formatLapTime} from './LapTimerScreen/format';
@@ -53,6 +53,7 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
                                                                  }) => {
     const {colors} = useTheme();
     const [currentLapIndex, setCurrentLapIndex] = useState(initialLapIndex);
+    const [mapType, setMapType] = useState<'standard' | 'satellite' | 'hybrid'>('standard');
 
     const currentLap = laps.find(lap => lap.lapIndex === currentLapIndex);
     const currentLapArrayIndex = laps.findIndex(lap => lap.lapIndex === currentLapIndex);
@@ -80,6 +81,27 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
         }
     };
 
+    const cycleMapType = () => {
+        setMapType(prev => {
+            if (prev === 'standard') return 'satellite';
+            if (prev === 'satellite') return 'hybrid';
+            return 'standard';
+        });
+    };
+
+    const getMapTypeLabel = () => {
+        switch (mapType) {
+            case 'standard':
+                return '🗺️';
+            case 'satellite':
+                return '🛰️';
+            case 'hybrid':
+                return '🌍';
+            default:
+                return '🗺️';
+        }
+    };
+
     return (
         <View style={[styles.container, {backgroundColor: colors.background}]}>
             {/* Header */}
@@ -92,11 +114,18 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
                     <Text style={[styles.trackLocation, {color: colors.secondaryText}]}
                           numberOfLines={1}>{trackLocation}</Text>
                 </View>
-                <View style={styles.backButton}/>
+                <TouchableOpacity onPress={cycleMapType} style={styles.mapTypeButton}>
+                    <Text style={{fontSize: 24}}>{getMapTypeLabel()}</Text>
+                </TouchableOpacity>
             </View>
 
             {/* Map */}
-            <MapView style={styles.map} region={mapRegion}>
+            <MapView
+                style={styles.map}
+                region={mapRegion}
+                mapType={mapType}
+                provider={PROVIDER_GOOGLE}
+            >
                 {/* Start/Finish Lines */}
                 <Marker coordinate={startLineSegment.start} title="Start Line">
                     <Text style={styles.flagMarker}>🏁</Text>
@@ -127,19 +156,64 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
 
                 {/* Trajectory */}
                 {currentLap?.trajectoryPoints && currentLap.trajectoryPoints.length > 0 && (
-                    <Polyline
-                        coordinates={currentLap.trajectoryPoints.map(p => ({
-                            latitude: p.latitude,
-                            longitude: p.longitude
-                        }))}
-                        strokeWidth={4}
-                        strokeColor={isBestLap ? colors.warning : colors.primary}
-                    />
+                    <>
+                        {/* Render trajectory as colored segments based on driving state */}
+                        {currentLap.trajectoryPoints.map((point, idx) => {
+                            if (idx === 0 || !currentLap.trajectoryPoints) return null; // Skip first point
+
+                            const prevPoint = currentLap.trajectoryPoints[idx - 1];
+                            const drivingState = point.drivingState || 'unknown';
+
+                            // Determine color based on driving state
+                            let strokeColor: string;
+                            switch (drivingState) {
+                                case 'braking':
+                                    strokeColor = '#FF0000'; // Red
+                                    break;
+                                case 'accelerating':
+                                    strokeColor = '#00FF00'; // Green
+                                    break;
+                                case 'coasting':
+                                    strokeColor = '#0080FF'; // Blue
+                                    break;
+                                default:
+                                    strokeColor = isBestLap ? colors.warning : colors.primary;
+                            }
+
+                            return (
+                                <Polyline
+                                    key={`segment-${idx}`}
+                                    coordinates={[
+                                        {latitude: prevPoint.latitude, longitude: prevPoint.longitude},
+                                        {latitude: point.latitude, longitude: point.longitude}
+                                    ]}
+                                    strokeWidth={5}
+                                    strokeColor={strokeColor}
+                                />
+                            );
+                        })}
+                    </>
                 )}
             </MapView>
 
             {/* Lap Info & Navigation */}
             <View style={[styles.footer, {backgroundColor: colors.surface, borderTopColor: colors.border}]}>
+                {/* Color Legend */}
+                <View style={styles.legendRow}>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, {backgroundColor: '#FF0000'}]}/>
+                        <Text style={[styles.legendText, {color: colors.secondaryText}]}>Brzdění</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, {backgroundColor: '#00FF00'}]}/>
+                        <Text style={[styles.legendText, {color: colors.secondaryText}]}>Akcelerace</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, {backgroundColor: '#0080FF'}]}/>
+                        <Text style={[styles.legendText, {color: colors.secondaryText}]}>Coasting</Text>
+                    </View>
+                </View>
+
                 {/* Navigation arrows */}
                 <View style={styles.navigationRow}>
                     <TouchableOpacity
@@ -169,9 +243,6 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
                                 ))}
                             </View>
                         )}
-                        <Text style={[styles.swipeHint, {color: colors.secondaryText}]}>
-                            Swipe up/down to navigate laps
-                        </Text>
                     </View>
 
                     <TouchableOpacity
@@ -203,6 +274,11 @@ const styles = StyleSheet.create({
     backButton: {
         minWidth: 60,
     },
+    mapTypeButton: {
+        minWidth: 60,
+        alignItems: 'flex-end',
+        padding: 8,
+    },
     headerCenter: {
         flex: 1,
         alignItems: 'center',
@@ -225,6 +301,25 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         paddingVertical: 16,
         paddingBottom: 32,
+    },
+    legendRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 16,
+    },
+    legendColor: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        marginRight: 8,
+    },
+    legendText: {
+        fontSize: 14,
     },
     navigationRow: {
         flexDirection: 'row',
