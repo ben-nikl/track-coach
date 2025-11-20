@@ -38,6 +38,13 @@ import {TrajectoryManager} from '../helpers/trajectoryManager';
 import {calculateOptimalLap, calculateTotalDistanceFromTrajectories, saveSession} from '../helpers/sessionStorage';
 import {SessionRecord} from '../helpers/sessionStorageTypes';
 import {AccelerationDetector} from '../helpers/accelerationDetector';
+import {getMockLocationProvider} from '../helpers/mockLocationProvider';
+import {loadMockTrackById} from '../helpers/mockTrackManager';
+
+// Mock GPS settings keys
+const MOCK_GPS_ENABLED_KEY = '@track_coach:mock_gps_enabled';
+const MOCK_GPS_TRACK_ID_KEY = '@track_coach:mock_gps_track_id';
+const MOCK_GPS_SPEED_KEY = '@track_coach:mock_gps_speed';
 
 interface LapSessionContextValue {
     events: LapEvent[];
@@ -403,7 +410,6 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     const processLocation = useCallback((loc: Location.LocationObject) => {
         // GPS anchor processing (1Hz) - kept mainly to update anchor & coarse crossing fallback
         if (loc.coords.accuracy != null && loc.coords.accuracy > REQUIRED_ACCURACY_M) return;
-        const prev = prevLocationRef.current;
         prevLocationRef.current = loc;
         if (!trackData) return;
         const segs = startFinishSegmentsRef.current;
@@ -742,7 +748,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         }
     }, [laps, currentSessionId, updateSessionInStorage]);
 
-    const startSession = useCallback((track: Track) => {
+    const startSession = useCallback(async (track: Track) => {
         const startTime = new Date().toISOString();
         const sessionId = `session_${Date.now()}`;
 
@@ -766,6 +772,39 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         trajectoryManagerRef.current.clearAll();
         setSelectedLapIndex(null);
 
+        // Check if Mock GPS mode is enabled
+        try {
+            const [mockEnabled, mockTrackId, mockSpeed] = await Promise.all([
+                AsyncStorage.getItem(MOCK_GPS_ENABLED_KEY),
+                AsyncStorage.getItem(MOCK_GPS_TRACK_ID_KEY),
+                AsyncStorage.getItem(MOCK_GPS_SPEED_KEY),
+            ]);
+
+            if (mockEnabled === 'true' && mockTrackId) {
+                // Initialize Mock Location Provider
+                const mockTrack = await loadMockTrackById(mockTrackId);
+                if (mockTrack) {
+                    const mockProvider = getMockLocationProvider();
+                    mockProvider.loadTrack({
+                        track: mockTrack,
+                        playbackSpeed: mockSpeed ? parseFloat(mockSpeed) : 1.0,
+                        loop: true,
+                        autoStart: true,
+                    });
+
+                    // Subscribe to mock location updates
+                    mockProvider.addSubscriber(processLocation);
+
+                    addToast(`🔧 Mock GPS: ${mockTrack.trackName} (${mockSpeed || 1}x)`);
+                    console.log(`Mock GPS initialized: ${mockTrack.trackName}`);
+                } else {
+                    console.warn('Mock track not found, falling back to real GPS');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to initialize Mock GPS:', error);
+        }
+
         // Create initial empty session record
         const initialSession: SessionRecord = {
             id: sessionId,
@@ -787,7 +826,7 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         });
 
         addToast('Session started');
-    }, [addToast]);
+    }, [addToast, processLocation]);
 
     const endSession = useCallback(() => {
         setSessionActive(false);
@@ -795,6 +834,13 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         detachLocationSubscriber();
         highFrequencyLocationManager.stop();
         trajectoryManagerRef.current.clearCurrentLap();
+
+        // Stop Mock Location Provider if it was running
+        const mockProvider = getMockLocationProvider();
+        if (mockProvider.isActive()) {
+            mockProvider.stop();
+            console.log('Mock GPS stopped');
+        }
 
         // Final save with end time
         if (currentSessionId) {

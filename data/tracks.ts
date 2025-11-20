@@ -64,30 +64,41 @@ export const TRACKS: Track[] = [
         name: 'Autodrom Most',
         location: 'Most, Czech Republic',
         flag: require('../assets/flags/cz.png'),
-        latitude: 50.5026,
-        longitude: 13.6326,
+        latitude: 50.519961,
+        longitude: 13.605994,
         latitudeDelta: 0.005,
         longitudeDelta: 0.005,
         sectors: [
             {
+                id: 'sector1',
+                center: {latitude: 50.519253, longitude: 13.595170},
+                trackP1: {latitude: 50.519306, longitude: 13.595117},
+                trackP2: {latitude: 50.519261, longitude: 13.595075},
+                halfWidth: 10
+            },
+            {
                 id: 'sector2',
-                center: {latitude: 50.502950, longitude: 13.632650},
-                trackP1: {latitude: 50.502900, longitude: 13.632500},
-                trackP2: {latitude: 50.503000, longitude: 13.632780}
+                center: {latitude: 50.519267, longitude: 13.593480},
+                trackP1: {latitude: 50.519176, longitude: 13.593506},
+                trackP2: {latitude: 50.519319, longitude: 13.593589},
+                halfWidth: 10
+            },
+            {
+                id: 'sector3',
+                center: {latitude: 50.520380, longitude: 13.606347},
+                trackP1: {latitude: 50.520338, longitude: 13.606260},
+                trackP2: {latitude: 50.520318, longitude: 13.606372},
+                halfWidth: 10
             },
         ],
         startLine: {
             id: 'start',
-            center: {latitude: 50.502800, longitude: 13.632400},
-            trackP1: {latitude: 50.502750, longitude: 13.632250},
-            trackP2: {latitude: 50.502850, longitude: 13.632550}
+            center: {latitude: 50.519453, longitude: 13.607737},
+            trackP1: {latitude: 50.519484, longitude: 13.607957},
+            trackP2: {latitude: 50.519532, longitude: 13.607519},
+            halfWidth: 10
         },
-        finishLine: {
-            id: 'finish',
-            center: {latitude: 50.502700, longitude: 13.632800},
-            trackP1: {latitude: 50.502650, longitude: 13.632650},
-            trackP2: {latitude: 50.502750, longitude: 13.632930}
-        },
+
     },
     {
         id: 'brno',
