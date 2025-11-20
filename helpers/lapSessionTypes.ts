@@ -54,7 +54,8 @@ export interface LapRecord {
     lapIndex: number;
     lapTimeMs: number;
     sectorSplitsMs: number[];
-    trajectoryPoints?: TrajectoryPoint[];
+    trajectoryPoints?: TrajectoryPoint[];  // Deprecated - use drivingStateChanges
+    drivingStateChanges?: DrivingStateChange[];  // Optimized: only transition points
 }
 
 /**
@@ -68,6 +69,22 @@ export interface TrajectoryPoint {
     accuracy?: number;
     // Acceleration data
     drivingState?: 'braking' | 'accelerating' | 'coasting' | 'unknown';
+    longitudinalG?: number;
+    lateralG?: number;
+}
+
+/**
+ * Driving state change event - marks transitions between braking/accelerating/coasting
+ * Optimized storage: only records when state changes, not every GPS point
+ */
+export interface DrivingStateChange {
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+    speed: number;
+    state: 'braking' | 'accelerating' | 'coasting' | 'unknown';
+    // Type of change
+    changeType: 'lap_start' | 'lap_end' | 'state_change';
     longitudinalG?: number;
     lateralG?: number;
 }

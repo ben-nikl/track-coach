@@ -197,10 +197,11 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
             splitMs: finalSplitMs
         }]);
 
-        // Store trajectory with lap record
-        const trajectoryPoints = trajectoryManagerRef.current.finishLap(currentLapIndex);
+        // Store trajectory with lap record - use optimized state changes
+        trajectoryManagerRef.current.finishLap(currentLapIndex);
+        const drivingStateChanges = trajectoryManagerRef.current.getStateChanges(currentLapIndex);
 
-        setLaps(p => [...p, {lapIndex: currentLapIndex, lapTimeMs, sectorSplitsMs, trajectoryPoints}]);
+        setLaps(p => [...p, {lapIndex: currentLapIndex, lapTimeMs, sectorSplitsMs, drivingStateChanges}]);
     }, [currentLapIndex]);
 
     const resetSession = useCallback(() => {

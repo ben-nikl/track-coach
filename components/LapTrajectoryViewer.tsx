@@ -155,43 +155,125 @@ const LapTrajectoryViewer: React.FC<LapTrajectoryViewerProps> = ({
                 ))}
 
                 {/* Trajectory */}
-                {currentLap?.trajectoryPoints && currentLap.trajectoryPoints.length > 0 && (
+                {currentLap?.drivingStateChanges && currentLap.drivingStateChanges.length > 0 && (
                     <>
-                        {/* Render trajectory as colored segments based on driving state */}
-                        {currentLap.trajectoryPoints.map((point, idx) => {
-                            if (idx === 0 || !currentLap.trajectoryPoints) return null; // Skip first point
+                        {/* Render trajectory from optimized state changes */}
+                        {(() => {
+                            const stateChanges = currentLap.drivingStateChanges;
+                            const trajectorySegments: Array<{
+                                coordinates: Array<{ latitude: number; longitude: number }>;
+                                color: string;
+                            }> = [];
 
-                            const prevPoint = currentLap.trajectoryPoints[idx - 1];
-                            const drivingState = point.drivingState || 'unknown';
+                            // Build segments by connecting consecutive state change points
+                            for (let i = 0; i < stateChanges.length - 1; i++) {
+                                const currentChange = stateChanges[i];
+                                const nextChange = stateChanges[i + 1];
 
-                            // Determine color based on driving state
-                            let strokeColor: string;
-                            switch (drivingState) {
-                                case 'braking':
-                                    strokeColor = '#FF0000'; // Red
-                                    break;
-                                case 'accelerating':
-                                    strokeColor = '#00FF00'; // Green
-                                    break;
-                                case 'coasting':
-                                    strokeColor = '#0080FF'; // Blue
-                                    break;
-                                default:
-                                    strokeColor = isBestLap ? colors.warning : colors.primary;
+                                // Determine color based on current driving state
+                                let strokeColor: string;
+                                switch (currentChange.state) {
+                                    case 'braking':
+                                        strokeColor = '#FF0000'; // Red
+                                        break;
+                                    case 'accelerating':
+                                        strokeColor = '#00FF00'; // Green
+                                        break;
+                                    case 'coasting':
+                                        strokeColor = '#0080FF'; // Blue
+                                        break;
+                                    default:
+                                        strokeColor = isBestLap ? colors.warning : colors.primary;
+                                }
+
+                                // Create segment from current point to next point
+                                trajectorySegments.push({
+                                    coordinates: [
+                                        {latitude: currentChange.latitude, longitude: currentChange.longitude},
+                                        {latitude: nextChange.latitude, longitude: nextChange.longitude}
+                                    ],
+                                    color: strokeColor
+                                });
                             }
 
-                            return (
+                            // Render all segments
+                            return trajectorySegments.map((segment, idx) => (
                                 <Polyline
                                     key={`segment-${idx}`}
-                                    coordinates={[
-                                        {latitude: prevPoint.latitude, longitude: prevPoint.longitude},
-                                        {latitude: point.latitude, longitude: point.longitude}
-                                    ]}
+                                    coordinates={segment.coordinates}
                                     strokeWidth={5}
-                                    strokeColor={strokeColor}
+                                    strokeColor={segment.color}
                                 />
-                            );
-                        })}
+                            ));
+                        })()}
+                    </>
+                )}
+
+                {/* Fallback: Legacy trajectory points (for backward compatibility) */}
+                {!currentLap?.drivingStateChanges && currentLap?.trajectoryPoints && currentLap.trajectoryPoints.length > 0 && (
+                    <>
+                        {/* Render trajectory as colored segments based on driving state */}
+                        {(() => {
+                            const trajectorySegments: Array<{
+                                coordinates: Array<{ latitude: number; longitude: number }>;
+                                color: string;
+                            }> = [];
+
+                            let currentSegment: Array<{ latitude: number; longitude: number }> = [];
+                            let currentColor: string | null = null;
+
+                            currentLap.trajectoryPoints.forEach((point, idx) => {
+                                const drivingState = point.drivingState || 'unknown';
+
+                                // Determine color based on driving state
+                                let strokeColor: string;
+                                switch (drivingState) {
+                                    case 'braking':
+                                        strokeColor = '#FF0000'; // Red
+                                        break;
+                                    case 'accelerating':
+                                        strokeColor = '#00FF00'; // Green
+                                        break;
+                                    case 'coasting':
+                                        strokeColor = '#0080FF'; // Blue
+                                        break;
+                                    default:
+                                        strokeColor = isBestLap ? colors.warning : colors.primary;
+                                }
+
+                                // If color changed, save current segment and start new one
+                                if (currentColor !== null && currentColor !== strokeColor && currentSegment.length > 0) {
+                                    trajectorySegments.push({
+                                        coordinates: [...currentSegment],
+                                        color: currentColor
+                                    });
+                                    // Start new segment with last point from previous segment for continuity
+                                    currentSegment = [{latitude: point.latitude, longitude: point.longitude}];
+                                } else {
+                                    currentSegment.push({latitude: point.latitude, longitude: point.longitude});
+                                }
+
+                                currentColor = strokeColor;
+                            });
+
+                            // Add final segment
+                            if (currentSegment.length > 0 && currentColor !== null) {
+                                trajectorySegments.push({
+                                    coordinates: currentSegment,
+                                    color: currentColor
+                                });
+                            }
+
+                            // Render consolidated segments
+                            return trajectorySegments.map((segment, idx) => (
+                                <Polyline
+                                    key={`segment-${idx}`}
+                                    coordinates={segment.coordinates}
+                                    strokeWidth={5}
+                                    strokeColor={segment.color}
+                                />
+                            ));
+                        })()}
                     </>
                 )}
             </MapView>
