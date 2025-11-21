@@ -4,6 +4,11 @@ import * as Location from 'expo-location';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import MapView, {Marker} from 'react-native-maps';
 import {useTheme} from '../ThemeProvider';
+import {getMockLocationProvider} from '../helpers/mockLocationProvider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Mock GPS settings keys
+const MOCK_GPS_ENABLED_KEY = '@track_coach:mock_gps_enabled';
 
 interface Coords {
     latitude: number;
@@ -26,6 +31,17 @@ const StatsScreen: React.FC = () => {
     const MAX_RETRIES = 5;
     const [mapReady, setMapReady] = useState(false);
     const [mapTimeout, setMapTimeout] = useState(false);
+    const [isMockActive, setIsMockActive] = useState(false);
+    const [mockGpsEnabled, setMockGpsEnabled] = useState<boolean>(false);
+    const [mockDebugInfo, setMockDebugInfo] = useState<{
+        trackName: string;
+        trackId: string;
+        source: string;
+        isActive: boolean;
+        currentPoint: number;
+        totalPoints: number;
+        progress: number;
+    } | null>(null);
 
     const clearRetry = () => {
         if (retryTimer.current) {
@@ -73,32 +89,148 @@ const StatsScreen: React.FC = () => {
 
     useEffect(() => {
         (async () => {
+            // First check if mock GPS is enabled in settings
+            const mockEnabled = await AsyncStorage.getItem(MOCK_GPS_ENABLED_KEY);
+            const useMockGps = mockEnabled === 'true';
+            setMockGpsEnabled(useMockGps);
+
             const {status} = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 setPermission('denied');
                 return;
             }
             setPermission('granted');
-            const sub = await Location.watchPositionAsync(
-                {accuracy: Location.Accuracy.Low, timeInterval: 5000, distanceInterval: 5},
-                pos => {
-                    setCoords({
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy,
-                        altitude: pos.coords.altitude,
-                        heading: pos.coords.heading,
-                        speed: pos.coords.speed,
-                        timestamp: pos.timestamp,
-                    });
-                    clearRetry();
-                    setError(null);
+
+            const mockProvider = getMockLocationProvider();
+
+            // If mock GPS is enabled, load the configured track
+            if (useMockGps) {
+                const [mockTrackId, mockSpeed] = await Promise.all([
+                    AsyncStorage.getItem('@track_coach:mock_gps_track_id'),
+                    AsyncStorage.getItem('@track_coach:mock_gps_speed'),
+                ]);
+
+                console.log('🔧 StatsScreen: Mock GPS enabled, track ID:', mockTrackId);
+
+                // If no track is configured, use default track (Autodrom Most)
+                const trackIdToLoad = mockTrackId || 'autodrom-most';
+
+                if (trackIdToLoad !== mockTrackId) {
+                    console.log('🔧 StatsScreen: No track configured, using default:', trackIdToLoad);
                 }
-            );
-            fetchLocation();
-            return () => {
-                sub.remove();
+
+                const {loadMockTrackById} = await import('../helpers/mockTrackManager');
+                const mockTrack = await loadMockTrackById(trackIdToLoad);
+
+                if (mockTrack) {
+                    console.log('🔧 StatsScreen: Mock track loaded:', mockTrack.trackName, 'with', mockTrack.points.length, 'points');
+
+                    // Determine source
+                    const source = trackIdToLoad.startsWith('custom-')
+                        ? 'Custom Session Export'
+                        : `assets/mock-tracks/${trackIdToLoad}.json`;
+
+                    // Load track into provider (but don't auto-start)
+                    mockProvider.loadTrack({
+                        track: mockTrack,
+                        playbackSpeed: mockSpeed ? parseFloat(mockSpeed) : 1.0,
+                        loop: true,
+                        autoStart: false, // Load without auto-start
+                    }, source);
+
+                    console.log('🔧 StatsScreen: Loaded mock track for preview:', mockTrack.trackName, 'from', source);
+
+                    // Show first point of track as initial position
+                    const firstPoint = mockTrack.points[0];
+                    if (firstPoint) {
+                        const initialCoords = {
+                            latitude: firstPoint.latitude,
+                            longitude: firstPoint.longitude,
+                            accuracy: firstPoint.accuracy,
+                            altitude: firstPoint.altitude,
+                            heading: firstPoint.heading,
+                            speed: 0, // Not moving in preview
+                            timestamp: Date.now(),
+                        };
+                        console.log('🔧 Setting coords from first point:', initialCoords.latitude, initialCoords.longitude);
+                        setCoords(initialCoords);
+                    } else {
+                        console.warn('⚠️ No points in mock track!');
+                    }
+
+                    // Start mock GPS playback for live preview
+                    mockProvider.start();
+                    console.log('🔧 StatsScreen: Started mock GPS playback');
+
+                    // If using default track, show warning
+                    if (!mockTrackId) {
+                        setError('Mock GPS zapnuto, ale žádný track není vybraný. Používám výchozí: ' + mockTrack.trackName);
+                    }
+                } else {
+                    console.warn('⚠️ Mock track not found:', trackIdToLoad);
+                    setError('Mock GPS: Track "' + trackIdToLoad + '" nebyl nalezen. Vyber track v nastavení.');
+                }
+            }
+
+            // Subscribe to mock location updates
+            const mockCallback = (location: Location.LocationObject) => {
+                console.log('📍 Mock GPS callback received:', location.coords.latitude, location.coords.longitude);
+                setCoords({
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude,
+                    accuracy: location.coords.accuracy,
+                    altitude: location.coords.altitude,
+                    heading: location.coords.heading,
+                    speed: location.coords.speed,
+                    timestamp: location.timestamp,
+                });
                 clearRetry();
+                setError(null);
+            };
+
+            // Always add subscriber - it will be called only when mock is active
+            mockProvider.addSubscriber(mockCallback);
+
+            let sub: Location.LocationSubscription | null = null;
+
+            // If mock GPS is disabled, use real GPS
+            if (!useMockGps) {
+                // Normal mode - use real GPS
+                console.log('📍 StatsScreen: Using real GPS');
+                sub = await Location.watchPositionAsync(
+                    {accuracy: Location.Accuracy.Low, timeInterval: 5000, distanceInterval: 5},
+                    pos => {
+                        setCoords({
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude,
+                            accuracy: pos.coords.accuracy,
+                            altitude: pos.coords.altitude,
+                            heading: pos.coords.heading,
+                            speed: pos.coords.speed,
+                            timestamp: pos.timestamp,
+                        });
+                        clearRetry();
+                        setError(null);
+                    }
+                );
+                fetchLocation();
+            } else {
+                console.log('🔧 StatsScreen: Mock GPS enabled, showing preview (real GPS disabled)');
+            }
+
+            // Check mock status periodically
+            const mockCheckInterval = setInterval(() => {
+                const isActive = mockProvider.isActive();
+                const debugInfo = mockProvider.getDebugInfo();
+                setIsMockActive(isActive);
+                setMockDebugInfo(debugInfo);
+            }, 500); // Check every 500ms
+
+            return () => {
+                sub?.remove();
+                clearRetry();
+                mockProvider.removeSubscriber(mockCallback);
+                clearInterval(mockCheckInterval);
             };
         })();
     }, [fetchLocation]);
@@ -138,6 +270,33 @@ const StatsScreen: React.FC = () => {
         <SafeAreaView style={[styles.safeArea, {backgroundColor: colors.background}]}>
             <View style={styles.wrapper}>
                 <Text style={[styles.heading, {color: colors.text}]}>Aktuální poloha</Text>
+
+                {mockDebugInfo && (
+                    <View
+                        style={[styles.mockDebugPanel, {backgroundColor: colors.surface, borderColor: colors.accent}]}>
+                        <Text style={[styles.mockDebugTitle, {color: colors.accent}]}>
+                            🔧 MOCK GPS {mockDebugInfo.isActive ? 'AKTIVNÍ' : 'NAČTENO (náhled)'}
+                        </Text>
+                        <Text style={[styles.mockDebugText, {color: colors.text}]}>
+                            Track: {mockDebugInfo.trackName}
+                        </Text>
+                        <Text style={[styles.mockDebugText, {color: colors.secondaryText}]}>
+                            Zdroj: {mockDebugInfo.source}
+                        </Text>
+                        <Text style={[styles.mockDebugText, {color: colors.secondaryText}]}>
+                            ID: {mockDebugInfo.trackId}
+                        </Text>
+                        {mockDebugInfo.isActive && (
+                            <>
+                                <Text style={[styles.mockDebugText, {color: colors.secondaryText}]}>
+                                    Progres: {(mockDebugInfo.progress * 100).toFixed(1)}%
+                                    ({mockDebugInfo.currentPoint}/{mockDebugInfo.totalPoints} bodů)
+                                </Text>
+                            </>
+                        )}
+                    </View>
+                )}
+
                 {loading && (
                     <View style={styles.row}><ActivityIndicator size="small"/><Text
                         style={[styles.loadingLabel, {color: colors.secondaryText}]}>Načítám…</Text></View>
@@ -158,6 +317,8 @@ const StatsScreen: React.FC = () => {
                             style={[styles.meta, {color: colors.secondaryText}]}>± {Math.round(coords.accuracy)} m</Text>}
                         {coords.altitude != null && <Text
                             style={[styles.meta, {color: colors.secondaryText}]}>Alt: {Math.round(coords.altitude)} m</Text>}
+                        {coords.speed != null && <Text
+                            style={[styles.meta, {color: colors.secondaryText}]}>Rychlost: {(coords.speed * 3.6).toFixed(1)} km/h</Text>}
                         <Text
                             style={[styles.meta, {color: colors.secondaryText}]}>{new Date(coords.timestamp).toLocaleTimeString()}</Text>
                     </View>
@@ -184,12 +345,13 @@ const StatsScreen: React.FC = () => {
                                 longitudeDelta: 0.005,
                             }}
                             onMapReady={() => setMapReady(true)}
-                            showsUserLocation={Platform.OS === 'android'}
+                            showsUserLocation={Platform.OS === 'android' && !isMockActive}
                         >
                             <Marker
                                 coordinate={{latitude: coords.latitude, longitude: coords.longitude}}
-                                title="Aktuální poloha"
+                                title={isMockActive ? "Mock GPS Pozice" : "Aktuální poloha"}
                                 description={`± ${coords.accuracy != null ? Math.round(coords.accuracy) + ' m' : '?'} `}
+                                pinColor={isMockActive ? '#FF6B00' : undefined}
                             />
                         </MapView>
                         {!mapReady && !mapTimeout && (
@@ -219,6 +381,34 @@ const styles = StyleSheet.create({
     wrapper: {flex: 1, paddingHorizontal: 24, paddingTop: 16},
     center: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24},
     heading: {fontSize: 22, fontWeight: '600', marginBottom: 16},
+    mockDebugPanel: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        borderWidth: 2,
+        marginBottom: 16,
+        gap: 4,
+    },
+    mockDebugTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    mockDebugText: {
+        fontSize: 12,
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    },
+    mockBadge: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        marginBottom: 12,
+    },
+    mockBadgeText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
     block: {marginBottom: 24},
     coord: {fontSize: 16, fontWeight: '500'},
     meta: {fontSize: 13},

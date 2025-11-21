@@ -571,6 +571,14 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
         let cancelled = false;
         const setup = async () => {
             if (!sessionActive || !trackData) return;
+
+            // Check if mock GPS is enabled - if so, skip real GPS setup
+            const mockEnabled = await AsyncStorage.getItem(MOCK_GPS_ENABLED_KEY);
+            if (mockEnabled === 'true') {
+                console.log('🔧 Mock GPS enabled, skipping real GPS setup in LapSessionContext');
+                return;
+            }
+
             const fg = await Location.requestForegroundPermissionsAsync();
             if (fg.status !== 'granted') {
                 setPermissionError('Foreground location denied');
@@ -606,9 +614,27 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
     useEffect(() => {
         if (!sessionActive || !trackData) return;
         let mounted = true;
+        let isMockGps = false;
+
         const subscribeCallback = (s: FusedSample) => fusedSampleHandlerRef.current?.(s);
         fusedSubscribeCallbackRef.current = subscribeCallback;
-        highFrequencyLocationManager.start().then(ok => {
+
+        // Check if mock GPS is enabled
+        AsyncStorage.getItem(MOCK_GPS_ENABLED_KEY).then(async (mockEnabled) => {
+            if (!mounted) return;
+
+            isMockGps = mockEnabled === 'true';
+
+            let ok: boolean;
+            if (isMockGps) {
+                // Start in mock mode (no real GPS watch)
+                ok = await highFrequencyLocationManager.startMockMode();
+                console.log('🔧 High-frequency manager started in MOCK mode');
+            } else {
+                // Normal mode with real GPS
+                ok = await highFrequencyLocationManager.start();
+            }
+
             if (!ok || !mounted) return;
             highFrequencyLocationManager.subscribe(subscribeCallback);
         });
@@ -785,18 +811,33 @@ export const LapSessionProvider: React.FC<{ children: React.ReactNode }> = ({chi
                 const mockTrack = await loadMockTrackById(mockTrackId);
                 if (mockTrack) {
                     const mockProvider = getMockLocationProvider();
+
+                    // Callback to handle mock GPS updates - inject into BOTH systems
+                    const mockGpsCallback = (loc: Location.LocationObject) => {
+                        // 1. Process for low-frequency GPS anchor (1Hz)
+                        processLocation(loc);
+
+                        // 2. Inject into high-frequency manager for precise crossing detection
+                        highFrequencyLocationManager.injectMockGpsUpdate(loc);
+                    };
+
+                    // Determine source for debugging
+                    const source = mockTrackId.startsWith('custom-')
+                        ? 'Custom Session Export'
+                        : `assets/mock-tracks/${mockTrackId}.json`;
+
                     mockProvider.loadTrack({
                         track: mockTrack,
                         playbackSpeed: mockSpeed ? parseFloat(mockSpeed) : 1.0,
                         loop: true,
                         autoStart: true,
-                    });
+                    }, source);
 
                     // Subscribe to mock location updates
-                    mockProvider.addSubscriber(processLocation);
+                    mockProvider.addSubscriber(mockGpsCallback);
 
                     addToast(`🔧 Mock GPS: ${mockTrack.trackName} (${mockSpeed || 1}x)`);
-                    console.log(`Mock GPS initialized: ${mockTrack.trackName}`);
+                    console.log(`🔧 Mock GPS initialized: ${mockTrack.trackName} at ${mockSpeed || 1}x speed from ${source}`);
                 } else {
                     console.warn('Mock track not found, falling back to real GPS');
                 }

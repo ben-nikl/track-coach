@@ -48,6 +48,8 @@ export class HighFrequencyLocationManager {
     private running = false;
     /** Estimate speed from previous GPS fix if speed missing */
     private prevGps: { t: number; lat: number; lon: number } | null = null;
+    /** Flag to indicate if mock GPS mode is active (disables real GPS watch) */
+    private mockGpsMode = false;
 
     /** Request permissions and start sensors */
     async start(): Promise<boolean> {
@@ -131,6 +133,59 @@ export class HighFrequencyLocationManager {
 
     unsubscribe(fn: (s: FusedSample) => void) {
         this.listeners.delete(fn);
+    }
+
+    /** Start in mock GPS mode - sensors only, no real GPS watch */
+    async startMockMode(): Promise<boolean> {
+        if (this.running) return true;
+        this.mockGpsMode = true;
+
+        try {
+            // Configure sensor update intervals (~100Hz => 10ms)
+            try {
+                Accelerometer.setUpdateInterval(10);
+                Gyroscope.setUpdateInterval(10);
+                DeviceMotion.setUpdateInterval(10);
+            } catch {
+            }
+
+            // Subscribe to IMU sensors (same as normal mode)
+            this.motionSub = DeviceMotion.addListener((data) => {
+                const anyData: any = data;
+                const a = anyData.userAcceleration;
+                if (a && typeof a.x === 'number') {
+                    this.onImuAcceleration(a.x || 0, a.y || 0, a.z || 0, Date.now());
+                }
+            });
+
+            this.gyroSub = Gyroscope.addListener(() => {
+                // Reserved for future use
+            });
+
+            const g = 9.80665;
+            this.accelSub = Accelerometer.addListener((accel) => {
+                this.onImuAcceleration(accel.x * g, accel.y * g, accel.z * g, Date.now());
+            });
+
+            this.running = true;
+            console.log('🔧 HighFrequencyLocationManager started in MOCK GPS mode');
+            return true;
+        } catch (e) {
+            console.warn('HighFrequencyLocationManager mock mode start failed', e);
+            return false;
+        }
+    }
+
+    /**
+     * Inject mock GPS update (used when mock GPS is active)
+     * This replaces the onGps callback with externally provided location data
+     */
+    injectMockGpsUpdate(loc: Location.LocationObject): void {
+        if (!this.mockGpsMode) {
+            console.warn('injectMockGpsUpdate called but not in mock mode');
+            return;
+        }
+        this.onGps(loc);
     }
 
     private emit(sample: FusedSample) {

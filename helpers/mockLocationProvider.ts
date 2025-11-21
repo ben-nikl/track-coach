@@ -47,18 +47,56 @@ export class MockLocationProvider {
     private intervalId: NodeJS.Timeout | null = null;
     private subscribers: Set<MockLocationCallback> = new Set();
     private currentPointIndex: number = 0;
+    private trackSource: string = ''; // NEW: Track source identifier
 
     /**
      * Načte a inicializuje mock track
      */
-    public loadTrack(config: MockLocationConfig): void {
+    public loadTrack(config: MockLocationConfig, source?: string): void {
         this.stop();
         this.config = config;
         this.currentPointIndex = 0;
+        this.trackSource = source || 'unknown';
+
+        console.log('🔧 MOCK GPS: Loaded track:', {
+            trackName: config.track.trackName,
+            trackId: config.track.trackId,
+            source: this.trackSource,
+            points: config.track.points.length,
+            duration: `${(config.track.duration / 1000).toFixed(1)}s`,
+            playbackSpeed: config.playbackSpeed,
+            loop: config.loop,
+            autoStart: config.autoStart,
+        });
 
         if (config.autoStart) {
             this.start();
         }
+    }
+
+    /**
+     * Vrátí informace o zdroji dat pro debugging
+     */
+    public getDebugInfo(): {
+        trackName: string;
+        trackId: string;
+        source: string;
+        isActive: boolean;
+        currentPoint: number;
+        totalPoints: number;
+        progress: number;
+    } | null {
+        if (!this.config) return null;
+
+        return {
+            trackName: this.config.track.trackName,
+            trackId: this.config.track.trackId,
+            source: this.trackSource,
+            isActive: this.isPlaying && !this.isPaused,
+            currentPoint: this.currentPointIndex,
+            totalPoints: this.config.track.points.length,
+            progress: this.getProgress(),
+        };
     }
 
     /**

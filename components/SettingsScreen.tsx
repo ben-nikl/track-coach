@@ -4,7 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {ThemePreference, useTheme} from '../ThemeProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {loadAvailableMockTracks} from '../helpers/mockTrackManager';
-import {MockTrack} from '../helpers/mockLocationProvider';
+import {getMockLocationProvider, MockTrack} from '../helpers/mockLocationProvider';
 
 const PREFS: ThemePreference[] = ['system', 'light', 'dark'];
 const PLAYBACK_SPEEDS = [0.5, 1, 2, 5, 10];
@@ -21,12 +21,32 @@ const SettingsScreen: React.FC = () => {
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [availableTracks, setAvailableTracks] = useState<MockTrack[]>([]);
+    const [isSimulationRunning, setIsSimulationRunning] = useState(false);
+    const [simulationProgress, setSimulationProgress] = useState(0);
 
     // Load settings
     useEffect(() => {
         loadSettings();
         loadTracks();
     }, []);
+
+    // Check simulation status periodically
+    useEffect(() => {
+        if (!mockGpsEnabled) return;
+
+        const checkInterval = setInterval(() => {
+            const mockProvider = getMockLocationProvider();
+            const isActive = mockProvider.isActive();
+            const debugInfo = mockProvider.getDebugInfo();
+
+            setIsSimulationRunning(isActive);
+            if (debugInfo) {
+                setSimulationProgress(debugInfo.progress);
+            }
+        }, 500);
+
+        return () => clearInterval(checkInterval);
+    }, [mockGpsEnabled]);
 
     const loadSettings = async () => {
         try {
@@ -84,6 +104,56 @@ const SettingsScreen: React.FC = () => {
     const selectSpeed = async (speed: number) => {
         setPlaybackSpeed(speed);
         await AsyncStorage.setItem(MOCK_GPS_SPEED_KEY, speed.toString());
+    };
+
+    const startSimulation = async () => {
+        if (!selectedTrackId) {
+            Alert.alert('No Track Selected', 'Please select a track first.');
+            return;
+        }
+
+        try {
+            const mockProvider = getMockLocationProvider();
+            const {loadMockTrackById} = await import('../helpers/mockTrackManager');
+            const mockTrack = await loadMockTrackById(selectedTrackId);
+
+            if (!mockTrack) {
+                Alert.alert('Error', 'Failed to load track. Please try again.');
+                return;
+            }
+
+            // Determine source
+            const source = selectedTrackId.startsWith('custom-')
+                ? 'Custom Session Export'
+                : `assets/mock-tracks/${selectedTrackId}.json`;
+
+            // Load and start the track
+            mockProvider.loadTrack({
+                track: mockTrack,
+                playbackSpeed: playbackSpeed,
+                loop: true,
+                autoStart: false,
+            }, source);
+
+            mockProvider.start();
+            console.log('🎬 Simulation started:', mockTrack.trackName);
+
+        } catch (error) {
+            console.error('Failed to start simulation:', error);
+            Alert.alert('Error', 'Failed to start simulation. Please try again.');
+        }
+    };
+
+    const stopSimulation = () => {
+        const mockProvider = getMockLocationProvider();
+        mockProvider.stop();
+        console.log('⏹️ Simulation stopped');
+    };
+
+    const restartSimulation = () => {
+        const mockProvider = getMockLocationProvider();
+        mockProvider.restart();
+        console.log('🔄 Simulation restarted');
     };
 
     return (
@@ -215,6 +285,79 @@ const SettingsScreen: React.FC = () => {
                                 {'\n'}• Restart app after changing settings
                             </Text>
                         </View>
+
+                        {/* Simulation Status */}
+                        <View style={[styles.simulationStatus, {borderColor: colors.border}]}>
+                            <Text style={[styles.statusLabel, {color: colors.text}]}>
+                                Simulation Status
+                            </Text>
+                            <Text
+                                style={[styles.statusValue, {color: isSimulationRunning ? colors.success : colors.danger}]}>
+                                {isSimulationRunning ? '🟢 Running' : '🔴 Stopped'}
+                            </Text>
+                            {isSimulationRunning && (
+                                <>
+                                    <Text style={[styles.progressText, {color: colors.secondaryText}]}>
+                                        Progress: {(simulationProgress * 100).toFixed(1)}%
+                                    </Text>
+                                    <View style={[styles.progressContainer, {backgroundColor: colors.border}]}>
+                                        <View style={[styles.progressBar, {
+                                            width: `${simulationProgress * 100}%`,
+                                            backgroundColor: colors.accent
+                                        }]}/>
+                                    </View>
+                                </>
+                            )}
+                        </View>
+
+                        {/* Simulation Controls */}
+                        <View style={styles.controlsContainer}>
+                            <Pressable
+                                onPress={startSimulation}
+                                disabled={isSimulationRunning}
+                                style={({pressed}) => [
+                                    styles.controlButton,
+                                    {
+                                        backgroundColor: isSimulationRunning ? colors.border : colors.success,
+                                        opacity: pressed ? 0.75 : 1
+                                    },
+                                ]}
+                            >
+                                <Text style={[styles.controlButtonText, {color: colors.white}]}>
+                                    ▶️ Start
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={stopSimulation}
+                                disabled={!isSimulationRunning}
+                                style={({pressed}) => [
+                                    styles.controlButton,
+                                    {
+                                        backgroundColor: !isSimulationRunning ? colors.border : colors.danger,
+                                        opacity: pressed ? 0.75 : 1
+                                    },
+                                ]}
+                            >
+                                <Text style={[styles.controlButtonText, {color: colors.white}]}>
+                                    ⏹️ Stop
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={restartSimulation}
+                                disabled={!isSimulationRunning}
+                                style={({pressed}) => [
+                                    styles.controlButton,
+                                    {
+                                        backgroundColor: !isSimulationRunning ? colors.border : colors.warning,
+                                        opacity: pressed ? 0.75 : 1
+                                    },
+                                ]}
+                            >
+                                <Text style={[styles.controlButtonText, {color: colors.white}]}>
+                                    🔄 Restart
+                                </Text>
+                            </Pressable>
+                        </View>
                     </>
                 )}
             </ScrollView>
@@ -284,6 +427,55 @@ const styles = StyleSheet.create({
     infoText: {
         fontSize: 13,
         lineHeight: 20,
+    },
+    simulationStatus: {
+        padding: 16,
+        borderRadius: 10,
+        borderWidth: 1,
+        marginTop: 16,
+    },
+    statusLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    statusValue: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginBottom: 12,
+    },
+    progressText: {
+        fontSize: 13,
+        marginBottom: 8,
+    },
+    progressContainer: {
+        height: 8,
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        borderRadius: 4,
+    },
+    controlsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 16,
+        borderWidth: 1,
+        borderRadius: 10,
+        overflow: 'hidden',
+    },
+    controlButton: {
+        flex: 1,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderRadius: 0,
+    },
+    controlButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
 
